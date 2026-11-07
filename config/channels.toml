@@ -1,0 +1,53 @@
+# Plan fields are filled in later by 숨비. channel_id lives outside the repo (see ytops.registry).
+[channels.soombi]
+display = "숨비찰나"
+is_live = true
+plan_long_per_week = 0
+plan_shorts_per_day = 0
+
+[channels.urachacha]
+display = "MORROW"
+is_live = false
+plan_long_per_week = 0
+plan_shorts_per_day = 0
+
+[channels.backthen]
+display = "BACK THEN"
+is_live = true
+plan_long_per_week = 0
+plan_shorts_per_day = 0
+
+[channels.a2p]
+display = "Adagio to Presto"
+is_live = false
+plan_long_per_week = 0
+plan_shorts_per_day = 0
+
+[channels.pliwav]
+display = "pli.wav"
+is_live = false
+plan_long_per_week = 0
+plan_shorts_per_day = 0
+
+[channels.groovewav]
+display = "groove.wav"
+is_live = false
+plan_long_per_week = 0
+plan_shorts_per_day = 0
+
+[channels.soombicafe]
+display = "숨비카페"
+is_live = false
+plan_long_per_week = 0
+plan_shorts_per_day = 0
+
+[channels.justsoombi]
+display = "JustSoombi"
+is_live = true
+plan_long_per_week = 0
+plan_shorts_per_day = 0
+
+[thresholds]
+up_pct = 5.0
+down_pct = -5.0
+shortage_days = 3
