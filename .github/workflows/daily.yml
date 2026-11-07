@@ -13,9 +13,9 @@ on:
         type: number
         default: 0
 
-# live.yml 과 같은 group — Pages 배포가 서로 겹치지 않게 차례로 돈다.
+# live.yml 과 다른 group — 같은 group 이면 대기 중인 daily 가 live 에 밀려 취소될 수 있다.
 concurrency:
-  group: pages
+  group: daily
   cancel-in-progress: false
 
 permissions:
