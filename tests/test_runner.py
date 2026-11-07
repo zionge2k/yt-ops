@@ -44,10 +44,57 @@ def test_dry_run_touches_no_db(monkeypatch, capsys):
 def test_run_writes_upserts_and_run_log(monkeypatch):
     _setup(monkeypatch)
     calls = []
-    monkeypatch.setattr(runner.store, "upsert", lambda conn, table, rows, pk, keep=(): calls.append((table, len(rows), tuple(pk), keep)) or len(rows))
+    logged = []
+
+    def fake_upsert(conn, table, rows, pk, keep=()):
+        calls.append((table, len(rows), tuple(pk), keep))
+        if table == "yt_run_log":
+            logged.extend(rows)
+        return len(rows)
+
+    monkeypatch.setattr(runner.store, "upsert", fake_upsert)
     runner.run_collect(["a2p"], dry_run=False, conn=object(), today=TODAY)
     assert ("yt_channel_daily", 1, ("channel_key", "day"), ()) in calls
     assert calls[-1][0] == "yt_run_log"
+    log = logged[0]
+    assert log["errors"].obj == [] and log["counts"].obj == {"yt_channel_daily": 1}
+    assert log["ok"] is True
+
+
+def test_run_log_ok_false_and_payload_with_errors(monkeypatch):
+    _setup(monkeypatch, bad=("a2p",))
+    logged = []
+    monkeypatch.setattr(runner.store, "upsert", lambda conn, t, rows, pk, keep=(): logged.extend(rows) if t == "yt_run_log" else None)
+    runner.run_collect(["a2p"], dry_run=False, conn=object(), today=TODAY)
+    assert logged[0]["ok"] is False
+    assert logged[0]["errors"].obj[0]["error"] == "RuntimeError"
+
+
+def test_subs_exact_uses_this_runs_rows_before_db_write(monkeypatch):
+    # DB has the baseline but no channel_daily rows yet; this run's rows must count
+    base = date(2026, 11, 1)
+    monkeypatch.setattr(runner, "COLLECTORS", [
+        ("channel_daily", SimpleNamespace(collect=lambda ctx, s, e: {"yt_channel_daily": [
+            {"channel_key": "a2p", "day": date(2026, 11, 2), "subs_gained": 5, "subs_lost": 1},
+            {"channel_key": "a2p", "day": date(2026, 11, 3), "subs_gained": 2, "subs_lost": None}]})),
+        ("subs", runner.subs),
+    ])
+    monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
+    monkeypatch.setattr(runner, "data_for_key", lambda k: SimpleNamespace(
+        channel_stats=lambda: {"statistics": {"subscriberCount": "990"}}))
+    monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": "A"})
+
+    def fake_fetch(conn, sql, params=()):
+        if "yt_subs_snapshot" in sql:
+            return [{"taken_on": base, "api_subscribers": 900}]
+        return [{"latest": None}] if "max(day)" in sql else []
+
+    monkeypatch.setattr(runner.store, "fetch", fake_fetch)
+    monkeypatch.setattr(runner, "subs_inputs", lambda conn, key, current_rows=(), _f=runner.subs_inputs: _f(conn, key, fake_fetch, current_rows))
+    seen = {}
+    monkeypatch.setattr(runner.store, "upsert", lambda conn, t, rows, pk, keep=(): seen.setdefault(t, rows) and len(rows))
+    runner.run_collect(["a2p"], dry_run=False, conn=object(), today=TODAY)
+    assert seen["yt_subs_snapshot"][0]["exact_subscribers"] == 900 + (5 - 1) + (2 - 0)
 
 
 def test_video_first_seen_filled(monkeypatch):
@@ -88,3 +135,18 @@ def test_subs_inputs_no_baseline():
         return [{"latest": None}] if "max(day)" in sql else []
 
     assert runner.subs_inputs("c", "a2p", fetch=fake_fetch) == (None, [], None)
+
+
+def test_subs_inputs_merges_current_rows_and_coalesces_none():
+    def fake_fetch(conn, sql, params=()):
+        if "yt_subs_snapshot" in sql:
+            return [{"taken_on": date(2026, 9, 1), "api_subscribers": 950}]
+        if "max(day)" in sql:
+            return [{"latest": date(2026, 9, 2)}]
+        return [{"day": date(2026, 9, 2), "subs_gained": 1, "subs_lost": 1}]
+
+    cur = [{"day": date(2026, 9, 2), "subs_gained": 4, "subs_lost": None},
+           {"day": date(2026, 9, 3), "subs_gained": None, "subs_lost": 2}]
+    baseline, daily, latest = runner.subs_inputs("c", "a2p", fetch=fake_fetch, current_rows=cur)
+    assert daily == [(date(2026, 9, 2), 4, 0), (date(2026, 9, 3), 0, 2)]
+    assert latest == date(2026, 9, 3)

@@ -5,6 +5,8 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 
+from psycopg.types.json import Jsonb
+
 from ytops import store
 from ytops.analytics import for_key as analytics_for_key
 from ytops.collect import COLLECTORS, subs
@@ -33,35 +35,50 @@ class RunResult:
     counts: dict[str, int] = field(default_factory=dict)
 
 
-def subs_inputs(conn, key: str, fetch=store.fetch):
-    """Baseline / daily deltas / latest aggregated day for the exact-subscriber estimate."""
-    rows = fetch(
-        conn,
-        "select taken_on, api_subscribers from yt_subs_snapshot "
-        "where channel_key = %s and api_subscribers < 1000 order by taken_on desc limit 1",
-        (key,),
-    )
-    baseline = (rows[0]["taken_on"], rows[0]["api_subscribers"]) if rows else None
-    daily: list[tuple[date, int, int]] = []
-    if baseline:
-        for r in fetch(
+def subs_inputs(conn, key: str, fetch=store.fetch, current_rows=()):
+    """Baseline / daily deltas / latest aggregated day for the exact-subscriber estimate.
+
+    current_rows: yt_channel_daily rows collected this run (not yet in the DB); they
+    win over DB rows on the same day and extend latest_day.
+    """
+    baseline = None
+    db_daily: dict[date, tuple[int, int]] = {}
+    db_latest = None
+    if conn is not None:
+        rows = fetch(
             conn,
-            "select day, subs_gained, subs_lost from yt_channel_daily "
-            "where channel_key = %s and day > %s order by day",
-            (key, baseline[0]),
-        ):
-            daily.append((r["day"], r["subs_gained"], r["subs_lost"]))
-    latest = fetch(conn, "select max(day) as latest from yt_channel_daily where channel_key = %s", (key,))
-    return baseline, daily, (latest[0]["latest"] if latest else None)
+            "select taken_on, api_subscribers from yt_subs_snapshot "
+            "where channel_key = %s and api_subscribers < 1000 order by taken_on desc limit 1",
+            (key,),
+        )
+        baseline = (rows[0]["taken_on"], rows[0]["api_subscribers"]) if rows else None
+        if baseline:
+            for r in fetch(
+                conn,
+                "select day, subs_gained, subs_lost from yt_channel_daily "
+                "where channel_key = %s and day > %s order by day",
+                (key, baseline[0]),
+            ):
+                db_daily[r["day"]] = (r["subs_gained"], r["subs_lost"])
+        latest = fetch(conn, "select max(day) as latest from yt_channel_daily where channel_key = %s", (key,))
+        db_latest = latest[0]["latest"] if latest else None
+    merged = dict(db_daily)
+    for r in current_rows:
+        merged[r["day"]] = (r["subs_gained"], r["subs_lost"])
+    # a day missing from the totals query leaves None; treat as 0 gained/lost
+    daily = [(d, g or 0, l or 0) for d, (g, l) in sorted(merged.items())
+             if baseline is None or d > baseline[0]]
+    days = [d for d in (db_latest, *(r["day"] for r in current_rows)) if d is not None]
+    return baseline, daily, (max(days) if days else None)
 
 
 def _error(key: str, stage: str, e: Exception) -> dict:
     return {"channel": key, "stage": stage, "error": type(e).__name__, "message": str(e)[:200]}
 
 
-def _run_collector(name, module, ctx, start, end, video_start, conn):
-    if name == "subs" and conn is not None:
-        baseline, daily, latest_day = subs_inputs(conn, ctx.key)
+def _run_collector(name, module, ctx, start, end, video_start, conn, current_rows=()):
+    if name == "subs":
+        baseline, daily, latest_day = subs_inputs(conn, ctx.key, current_rows=current_rows)
         return {"yt_subs_snapshot": [subs.snapshot_row(ctx, ctx.data.channel_stats(), baseline, daily, latest_day)]}
     return module.collect(ctx, video_start if name == "video_daily" else start, end)
 
@@ -95,7 +112,7 @@ def run_collect(
             continue
         for name, module in COLLECTORS:
             try:
-                out = _run_collector(name, module, ctx, start, end, video_start, db)
+                out = _run_collector(name, module, ctx, start, end, video_start, db, collected.get("yt_channel_daily", ()))
             except Exception as e:
                 result.errors.append(_error(key, name, e))
                 continue
@@ -123,15 +140,12 @@ def run_collect(
 
     result.latest_day = max(days_seen) if days_seen else None
     if db is not None:
-        import json
-
         try:
             store.upsert(db, "yt_run_log", [{
                 "run_id": result.run_id, "started_at": started_at,
                 "finished_at": datetime.now(timezone.utc), "ok": not result.errors,
                 "latest_day": result.latest_day,
-                "errors": json.dumps(result.errors, ensure_ascii=False),
-                "counts": json.dumps(result.counts),
+                "errors": Jsonb(result.errors), "counts": Jsonb(result.counts),
             }], ["run_id"])
         except Exception as e:
             result.errors.append(_error("-", "run_log", e))
