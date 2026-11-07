@@ -1,0 +1,70 @@
+from datetime import date, datetime, timezone
+
+from tests.fakes import fixture
+from ytops.collect import live
+from ytops.collect.context import CollectContext
+from ytops.registry import Channel
+
+CH = Channel("soombi", "soombi", "UC1", False, 0, 0, "chalna")
+TODAY = date(2026, 11, 7)
+NOW = datetime(2026, 11, 7, 1, 0, tzinfo=timezone.utc)
+
+
+class FakeData:
+    def __init__(self, broadcasts, videos=(), health=None):
+        self.broadcasts, self._videos, self.health = broadcasts, list(videos), health or {}
+        self.calls = []
+
+    def active_broadcasts(self):
+        return self.broadcasts
+
+    def videos(self, ids):
+        self.calls.append(("videos", ids))
+        return self._videos
+
+    def stream_health(self, stream_id):
+        self.calls.append(("stream_health", stream_id))
+        return self.health
+
+
+def ctx(data):
+    return CollectContext("soombi", CH, None, data, TODAY, NOW)
+
+
+def test_live_none_row_when_no_broadcast():
+    data = FakeData([])
+    rows = live.collect(ctx(data), TODAY, TODAY)["yt_live_snapshot"]
+    assert rows == [{
+        "channel_key": "soombi", "taken_at": NOW, "broadcast_id": None, "life_cycle": "none",
+        "concurrent": None, "health": None, "stream_status": None, "actual_start": None,
+        "title": None,
+    }]
+    assert data.calls == []
+
+
+def _video(live_details):
+    return {"id": "bcast0001", "liveStreamingDetails": live_details}
+
+
+def test_live_active_row_from_fixtures():
+    health = fixture("livestreams_status.json")["items"][0]["status"]
+    data = FakeData(fixture("broadcasts_active.json")["items"],
+                    [_video({"actualStartTime": "2026-11-07T01:00:00Z", "concurrentViewers": "42"})],
+                    health)
+    rows = live.collect(ctx(data), TODAY, TODAY)["yt_live_snapshot"]
+    assert rows == [{
+        "channel_key": "soombi", "taken_at": NOW, "broadcast_id": "bcast0001",
+        "life_cycle": "live", "concurrent": 42, "health": "good", "stream_status": "active",
+        "actual_start": datetime(2026, 11, 7, 1, tzinfo=timezone.utc), "title": "Live now",
+    }]
+    assert data.calls == [("videos", ["bcast0001"]), ("stream_health", "strm0001")]
+
+
+def test_live_concurrent_none_not_zero():
+    data = FakeData(fixture("broadcasts_active.json")["items"],
+                    [_video({"actualStartTime": "2026-11-07T01:00:00Z"})], {})
+    row = live.collect(ctx(data), TODAY, TODAY)["yt_live_snapshot"][0]
+    assert row["concurrent"] is None
+    assert (row["health"], row["stream_status"]) == (None, None)
+    zero = FakeData(fixture("broadcasts_active.json")["items"], [_video({"concurrentViewers": "0"})])
+    assert live.collect(ctx(zero), TODAY, TODAY)["yt_live_snapshot"][0]["concurrent"] == 0
