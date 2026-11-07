@@ -32,8 +32,6 @@ Actions 탭 → **daily** → Run workflow.
 
 ## ④ 꼬비 CLI 예시
 
-> `live` · `shorts` · `schedule` · `query` · `manual` 은 **Task 9 에서 추가 예정**(아직 없음). 지금 있는 것: `collect backfill status render encrypt schema`.
-
 ```
 ytops live --channel all [--save]
 ytops shorts --channel backthen --days 28 --top 20

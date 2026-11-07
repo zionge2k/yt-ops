@@ -1,4 +1,4 @@
-"""ytops command line: collect / backfill / status / schema."""
+"""ytops command line: argument wiring only; on-demand commands live in ytops.commands."""
 from __future__ import annotations
 
 import argparse
@@ -8,7 +8,7 @@ from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from ytops import crypt, registry, render, runner, store
+from ytops import commands, crypt, registry, render, runner, store
 from ytops.registry import KEYS, resolve_key
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "db" / "schema.sql"
@@ -101,6 +101,36 @@ def main(argv: list[str] | None = None) -> int:
     e.add_argument("out", metavar="OUT")
     s = sub.add_parser("schema")
     s.add_argument("--apply", action="store_true")
+    lv = sub.add_parser("live")
+    lv.add_argument("--channel", required=True)
+    lv.add_argument("--save", action="store_true")
+    sh = sub.add_parser("shorts")
+    sh.add_argument("--channel", required=True)
+    sh.add_argument("--days", type=int, default=28)
+    sh.add_argument("--top", type=int, default=20)
+    sc = sub.add_parser("schedule")
+    sc.add_argument("--channel", required=True)
+    q = sub.add_parser("query")
+    qg = q.add_mutually_exclusive_group(required=True)
+    qg.add_argument("--channel")
+    qg.add_argument("--channels", help="'all' for every channel")
+    q.add_argument("--dims", default="country")
+    q.add_argument("--metrics", default="views,estimatedMinutesWatched,averageViewDuration")
+    q.add_argument("--filters")
+    q.add_argument("--sort", default="-views")
+    q.add_argument("--days", type=int, default=28)
+    q.add_argument("--start")
+    q.add_argument("--end")
+    q.add_argument("--max", type=int, default=25)
+    m = sub.add_parser("manual")
+    ms = m.add_subparsers(dest="action", required=True)
+    mset = ms.add_parser("set")
+    mset.add_argument("key")
+    mset.add_argument("field")
+    mset.add_argument("value")
+    mset.add_argument("--as-of", required=True, help="YYYY-MM-DD")
+    mset.add_argument("--note")
+    ms.add_parser("list")
     args = parser.parse_args(argv)
     if args.cmd == "collect":
         return _collect(args, days=args.days, video_days=args.days)
@@ -110,6 +140,10 @@ def main(argv: list[str] | None = None) -> int:
         return _status()
     if args.cmd == "render":
         return _render(args)
+    handler = {"live": commands.cmd_live, "shorts": commands.cmd_shorts, "schedule": commands.cmd_schedule,
+               "query": commands.cmd_query, "manual": commands.cmd_manual}.get(args.cmd)
+    if handler:
+        return handler(args)
     if args.cmd == "encrypt":
         return _encrypt(args)
     return _schema(args)

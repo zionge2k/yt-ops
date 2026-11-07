@@ -25,6 +25,7 @@ class AnalyticsClient:
         filters: str | None = None,
         sort: str | None = None,
         max_results: int = 200,
+        paginate: bool = True,
     ) -> list[dict]:
         out: list[dict] = []
         start_index = 1
@@ -45,7 +46,7 @@ class AnalyticsClient:
             resp = execute(self._service.reports().query(**kwargs), self._sleep)
             page = self._rows(resp)
             out.extend(page)
-            if len(page) < max_results:
+            if not paginate or len(page) < max_results:
                 break
             start_index += max_results
         return out[:MAX_ROWS]

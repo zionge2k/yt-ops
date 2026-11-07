@@ -84,3 +84,13 @@ def test_query_gives_up_after_three_attempts():
     with pytest.raises(Exception):
         client(svc, sleeps).query(D1, D2, "day", "views")
     assert svc.queues["reports.query"] == [] and sleeps == [1, 2]
+
+
+def test_query_paginate_false_stops_after_first_page():
+    from datetime import date
+    from ytops.analytics import AnalyticsClient
+    from tests.fakes import FakeService
+    page = {"columnHeaders": [{"name": "country", "dataType": "STRING"}], "rows": [["KR"], ["US"]]}
+    svc = FakeService(reports__query=[page])
+    rows = AnalyticsClient(svc).query(date(2026, 1, 1), date(2026, 1, 2), "country", "views", max_results=2, paginate=False)
+    assert len(rows) == 2 and len(svc.calls) == 1
