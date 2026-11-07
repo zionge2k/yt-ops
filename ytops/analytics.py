@@ -8,6 +8,12 @@ from typing import Callable
 from ytops._retry import execute
 
 MAX_ROWS = 5000
+
+
+class TruncationError(RuntimeError):
+    """A single-request query hit its row cap, so the result may be incomplete."""
+
+
 _CASTS = {"INTEGER": int, "FLOAT": float}
 
 
@@ -25,7 +31,8 @@ class AnalyticsClient:
         filters: str | None = None,
         sort: str | None = None,
         max_results: int = 200,
-        paginate: bool = True,
+        paginate: bool = False,
+        top_n: bool = False,
     ) -> list[dict]:
         out: list[dict] = []
         start_index = 1
@@ -46,8 +53,13 @@ class AnalyticsClient:
             resp = execute(self._service.reports().query(**kwargs), self._sleep)
             page = self._rows(resp)
             out.extend(page)
-            if not paginate or len(page) < max_results:
+            if len(page) < max_results:
                 break
+            if top_n:
+                break  # caller asked for the first max_results rows of a sorted query
+            if not paginate:
+                # startIndex paging silently truncates, so a full page is an error, not a cue to page.
+                raise TruncationError(f"{dims}: {max_results} rows cap hit")
             start_index += max_results
         return out[:MAX_ROWS]
 

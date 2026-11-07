@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 
 from fakes import FakeService, fixture, http_error
-from ytops.analytics import AnalyticsClient
+from ytops.analytics import AnalyticsClient, TruncationError
 
 D1, D2 = date(2026, 11, 1), date(2026, 11, 2)
 
@@ -49,7 +49,7 @@ def _page(n, offset=0):
 
 def test_query_paginates_with_start_index():
     svc = FakeService(reports__query=[_page(200), _page(50, 200)])
-    rows = client(svc).query(D1, D2, "day", "views", max_results=200)
+    rows = client(svc).query(D1, D2, "day", "views", max_results=200, paginate=True)
     assert len(rows) == 250
     assert [kw["startIndex"] for kw in svc.kwargs("reports.query")] == [1, 201]
     assert rows[-1]["views"] == 249
@@ -57,7 +57,7 @@ def test_query_paginates_with_start_index():
 
 def test_query_caps_at_5000_rows():
     svc = FakeService(reports__query=[_page(1000, i * 1000) for i in range(6)])
-    rows = client(svc).query(D1, D2, "day", "views", max_results=1000)
+    rows = client(svc).query(D1, D2, "day", "views", max_results=1000, paginate=True)
     assert len(rows) == 5000
     assert len(svc.calls) == 5
 
@@ -86,11 +86,20 @@ def test_query_gives_up_after_three_attempts():
     assert svc.queues["reports.query"] == [] and sleeps == [1, 2]
 
 
-def test_query_paginate_false_stops_after_first_page():
-    from datetime import date
-    from ytops.analytics import AnalyticsClient
-    from tests.fakes import FakeService
-    page = {"columnHeaders": [{"name": "country", "dataType": "STRING"}], "rows": [["KR"], ["US"]]}
-    svc = FakeService(reports__query=[page])
-    rows = AnalyticsClient(svc).query(date(2026, 1, 1), date(2026, 1, 2), "country", "views", max_results=2, paginate=False)
-    assert len(rows) == 2 and len(svc.calls) == 1
+def test_query_default_makes_single_request():
+    svc = FakeService(reports__query=[_page(5)])
+    assert len(client(svc).query(D1, D2, "day", "views", max_results=200)) == 5
+    assert len(svc.calls) == 1
+
+
+def test_query_full_page_without_paginate_raises_truncation():
+    svc = FakeService(reports__query=[_page(3)])
+    with pytest.raises(TruncationError, match="day: 3 rows cap hit"):
+        client(svc).query(D1, D2, "day", "views", max_results=3)
+    assert len(svc.calls) == 1
+
+
+def test_query_top_n_returns_full_page_without_error():
+    svc = FakeService(reports__query=[_page(3)])
+    assert len(client(svc).query(D1, D2, "day", "views", max_results=3, top_n=True)) == 3
+    assert len(svc.calls) == 1

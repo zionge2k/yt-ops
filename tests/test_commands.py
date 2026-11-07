@@ -7,8 +7,8 @@ class FakeAnalytics:
     def __init__(self, rows):
         self.rows, self.calls = rows, []
 
-    def query(self, start, end, dims, metrics, filters=None, sort=None, max_results=200, paginate=True):
-        assert paginate is False  # top-N requests must not page past the limit
+    def query(self, start, end, dims, metrics, filters=None, sort=None, max_results=200, top_n=False):
+        assert top_n  # --max / --top are limits, not completeness checks
         self.calls.append((start, end, dims, metrics, filters, sort, max_results))
         return self.rows
 
@@ -124,3 +124,12 @@ def test_manual_set_and_list(monkeypatch, capsys):
     cli.main(["manual", "list"])
     out = capsys.readouterr().out
     assert "official_watch_hours_365" in out and "3164" in out
+
+
+def test_query_default_sort_is_first_metric(monkeypatch, capsys):
+    fake = FakeAnalytics([])
+    _patch(monkeypatch, analytics=fake)
+    cli.main(["query", "--channel", "soombicafe", "--dims", "ageGroup,gender", "--metrics", "viewerPercentage"])
+    assert fake.calls[0][5] == "-viewerPercentage"
+    cli.main(["query", "--channel", "soombicafe", "--metrics", "views", "--sort", "country"])
+    assert fake.calls[1][5] == "country"

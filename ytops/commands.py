@@ -69,7 +69,7 @@ def cmd_shorts(args) -> int:
     start = end - timedelta(days=args.days - 1)
     rows = ctx.analytics.query(
         start, end, "video", "views,engagedViews,estimatedMinutesWatched,subscribersGained,subscribersLost",
-        filters="creatorContentType==shorts", sort="-views", max_results=args.top, paginate=False)
+        filters="creatorContentType==shorts", sort="-views", max_results=args.top, top_n=True)
     titles = {v["id"]: v.get("snippet", {}).get("title") for v in ctx.data.videos([r["video"] for r in rows])}
     for r in rows:
         views = r.get("views")
@@ -110,7 +110,7 @@ def cmd_query(args) -> int:
         try:
             client = analytics_for_key(key)
             rows = client.query(start, end, args.dims, args.metrics, filters=args.filters,
-                                sort=args.sort, max_results=args.max, paginate=False)
+                                sort=args.sort or "-" + args.metrics.split(",")[0], max_results=args.max, top_n=True)
         except Exception as e:
             print(f"# ⚪ {key}: {type(e).__name__}")
             continue

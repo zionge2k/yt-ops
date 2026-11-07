@@ -117,7 +117,7 @@ def main(argv: list[str] | None = None) -> int:
     q.add_argument("--dims", default="country")
     q.add_argument("--metrics", default="views,estimatedMinutesWatched,averageViewDuration")
     q.add_argument("--filters")
-    q.add_argument("--sort", default="-views")
+    q.add_argument("--sort", help="default: descending by the first metric")
     q.add_argument("--days", type=int, default=28)
     q.add_argument("--start")
     q.add_argument("--end")

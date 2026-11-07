@@ -45,7 +45,7 @@ def test_video_daily_rows():
     assert c.analytics.calls == [(
         date(2026, 11, 1), date(2026, 11, 2), "video,day",
         "views,engagedViews,estimatedMinutesWatched,averageViewDuration,"
-        "averageViewPercentage,subscribersGained,subscribersLost", "video==v000", 200)]
+        "averageViewPercentage,subscribersGained,subscribersLost", "video==v000", 1000)]
 
 
 def test_video_daily_empty():
@@ -55,10 +55,19 @@ def test_video_daily_empty():
     assert video_daily.collect(ctx([]), TODAY, TODAY) == {"yt_video_daily": []}
 
 
-def test_video_daily_chunks_filter_by_50():
+def test_video_daily_chunks_filter_by_50_for_short_window():
     c = ctx([], n=60)
-    video_daily.collect(c, date(2026, 11, 1), date(2026, 11, 2))
+    video_daily.collect(c, date(2026, 11, 1), date(2026, 11, 10))
     ids = c.data.ids
     assert [call[4] for call in c.analytics.calls] == [
         "video==" + ",".join(ids[:50]), "video==" + ",".join(ids[50:])]
-    assert all(call[2] == "video,day" and call[5] == 200 for call in c.analytics.calls)
+    assert all(call[2] == "video,day" and call[5] == 1000 for call in c.analytics.calls)
+
+
+def test_video_daily_chunk_shrinks_for_28_day_window():
+    c = ctx([], n=60)
+    video_daily.collect(c, date(2026, 11, 1), date(2026, 11, 28))
+    ids = c.data.ids
+    assert [call[4] for call in c.analytics.calls] == [
+        "video==" + ",".join(ids[:35]), "video==" + ",".join(ids[35:])]
+    assert all(call[5] == 1000 for call in c.analytics.calls)
