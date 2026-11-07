@@ -43,7 +43,12 @@ jobs:
           AGE_KEY: ${{ secrets.AGE_KEY }}
         run: |
           umask 077
-          curl -sSL https://github.com/FiloSottile/age/releases/download/v1.2.1/age-v1.2.1-linux-amd64.tar.gz | tar -xz -C "$RUNNER_TEMP"
+          # age 배포본은 지문(SHA256)이 맞을 때만 푼다 — 2026-11-07 두 번 받아 확인한 값. 버전을 올리면 이 값도 같이 바꾼다.
+          AGE_URL="https://github.com/FiloSottile/age/releases/download/v1.2.1/age-v1.2.1-linux-amd64.tar.gz"
+          AGE_SHA256="7df45a6cc87d4da11cc03a539a7470c15b1041ab2b396af088fe9990f7c79d50"
+          curl -sSL -o "$RUNNER_TEMP/age.tgz" "$AGE_URL"
+          echo "$AGE_SHA256  $RUNNER_TEMP/age.tgz" | sha256sum -c - || { echo "⛔ age 지문 불일치 — 다운로드를 믿을 수 없어 중단"; exit 1; }
+          tar -xz -C "$RUNNER_TEMP" -f "$RUNNER_TEMP/age.tgz" && rm -f "$RUNNER_TEMP/age.tgz"
           printf '%s\n' "$AGE_KEY" > "$RUNNER_TEMP/age.key"
           "$RUNNER_TEMP/age/age" -d -i "$RUNNER_TEMP/age.key" vault/yt-channels.tar.age | tar -xz -C "$RUNNER_TEMP"
           rm -f "$RUNNER_TEMP/age.key"

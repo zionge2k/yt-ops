@@ -1,5 +1,6 @@
-google-api-python-client
-google-auth
-psycopg[binary]
-python-dotenv
-cryptography
+# 버전을 못 박는다(2026-11-07 Mac .venv 에서 dry-run 이 돈 조합). 올릴 때는 로컬에서 테스트 뒤 여기 숫자만 바꾼다.
+google-api-python-client==2.201.0
+google-auth==2.62.1
+psycopg[binary]==3.3.8
+python-dotenv==1.2.4
+cryptography==50.0.2
