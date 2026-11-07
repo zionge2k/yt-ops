@@ -197,3 +197,30 @@ def test_default_today_is_kst_date(monkeypatch):
     monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": "A"})
     runner.run_collect(["a2p"], dry_run=True)
     assert seen["today"] == date(2026, 11, 7) and seen["end"] == date(2026, 11, 6)
+
+
+def _schedule_setup(monkeypatch, rows):
+    monkeypatch.setattr(runner, "COLLECTORS", [("schedule", SimpleNamespace(
+        collect=lambda ctx, s, e: {"yt_schedule": rows, "yt_channel_daily": [
+            {"channel_key": "a2p", "day": date(2026, 11, 3), "views": 1}]}))])
+    monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
+    monkeypatch.setattr(runner, "data_for_key", lambda k: "x")
+    monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": "A"})
+    calls = []
+    monkeypatch.setattr(runner.store, "upsert", lambda conn, t, rows, pk, keep=(): calls.append(("upsert", t)) or len(rows))
+    monkeypatch.setattr(runner.store, "replace_channel",
+                        lambda conn, t, key, rows, pk: calls.append(("replace", t, key, len(rows))) or len(rows))
+    return calls
+
+
+def test_runner_replaces_schedule_rows(monkeypatch):
+    calls = _schedule_setup(monkeypatch, [{"channel_key": "a2p", "video_id": "v"}])
+    runner.run_collect(["a2p"], dry_run=False, conn=object(), today=TODAY)
+    assert ("replace", "yt_schedule", "a2p", 1) in calls
+    assert ("upsert", "yt_channel_daily") in calls and ("upsert", "yt_schedule") not in calls
+
+
+def test_runner_empty_schedule_still_replaces(monkeypatch):
+    calls = _schedule_setup(monkeypatch, [])
+    runner.run_collect(["a2p"], dry_run=False, conn=object(), today=TODAY)
+    assert ("replace", "yt_schedule", "a2p", 0) in calls

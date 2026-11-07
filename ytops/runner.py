@@ -24,6 +24,7 @@ PRIMARY_KEYS: dict[str, list[str]] = {
     "yt_schedule": ["channel_key", "video_id"],
     "yt_live_snapshot": ["channel_key", "taken_at"],
 }
+REPLACE_PER_CHANNEL = ("yt_schedule",)  # a run finding nothing must clear the old rows
 KEEP: dict[str, tuple[str, ...]] = {"yt_video": ("first_seen_at",)}
 
 
@@ -133,7 +134,10 @@ def run_collect(
                 result.counts[table] = result.counts.get(table, 0) + len(rows)
             elif db is not None:
                 try:
-                    n = store.upsert(db, table, rows, PRIMARY_KEYS[table], KEEP.get(table, ()))
+                    if table in REPLACE_PER_CHANNEL:
+                        n = store.replace_channel(db, table, key, rows, PRIMARY_KEYS[table])
+                    else:
+                        n = store.upsert(db, table, rows, PRIMARY_KEYS[table], KEEP.get(table, ()))
                     result.counts[table] = result.counts.get(table, 0) + n
                 except Exception as e:
                     result.errors.append(_error(key, f"store:{table}", e))
