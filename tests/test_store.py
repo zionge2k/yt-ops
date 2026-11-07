@@ -107,3 +107,12 @@ def test_replace_channel_is_atomic():
     ok = FakeConn()
     store.replace_channel(ok, "yt_schedule", "soombi", [], ["channel_key", "video_id"])
     assert ok.events == ["begin", "commit"]
+
+
+def test_run_collectors_migration_adds_column_and_backfills_live_only_rows():
+    from pathlib import Path
+    db = Path(__file__).resolve().parent.parent / "db"
+    for path in (db / "migrations" / "2026-11-08-run-collectors.sql", db / "schema.sql"):
+        sql = " ".join(path.read_text(encoding="utf-8").split())
+        assert "alter table yt_run_log add column if not exists collectors jsonb" in sql, path.name
+        assert "update yt_run_log set collectors = '[\"live\"]'::jsonb where collectors is null" in sql, path.name

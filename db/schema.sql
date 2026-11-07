@@ -126,6 +126,14 @@ create table if not exists yt_run_log (
   primary key (run_id)
 );
 alter table yt_run_log add column if not exists collectors jsonb;  -- collector names this run executed
+-- 이전 코드(collectors 열을 모르던 live 전용 run)가 남긴 행을 live 전용으로 표시한다. 여러 번 실행해도 같다.
+update yt_run_log set collectors = '["live"]'::jsonb
+where collectors is null
+  and started_at >= '2026-11-07T13:00:00Z'
+  and (counts - 'yt_live_snapshot') = '{}'::jsonb
+  and not exists (
+    select 1 from jsonb_array_elements(coalesce(errors, '[]'::jsonb)) e
+    where e->>'stage' not in ('live', 'client'));
 alter table yt_run_log enable row level security;
 
 -- 3판(2026-11-07-v3): 청중 · 재생목록

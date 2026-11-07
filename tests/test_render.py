@@ -489,3 +489,16 @@ def test_live_and_audience_reads_are_bounded(monkeypatch):
     render.build(None, today=TODAY, config=_cfg(), now=NOW)
     assert "max(taken_at)" in seen["yt_live_snapshot"]
     assert "max(as_of)" in seen["yt_audience"]
+
+
+def test_legacy_live_only_rows_marked_by_migration_do_not_clear_daily_failure(monkeypatch):
+    # rows the migration backfilled (collectors ["live"]) are live-only: they cannot clear a daily failure
+    t_daily = datetime(2026, 11, 8, 0, 30, tzinfo=UTC)
+    log = [{"run_id": f"old{i}", "started_at": t_daily + timedelta(minutes=20 * (i + 1)), "ok": True,
+            "channels": list(render.ORDER), "collectors": ["live"], "errors": []} for i in range(3)][::-1]
+    log.append({"run_id": "daily", "started_at": t_daily, "ok": False, "channels": list(render.ORDER),
+                "collectors": ["channel_daily", "subs", "live"],
+                "errors": [{"channel": "soombi", "stage": "channel_daily", "error": "HttpError", "message": "m"}]})
+    d = _build(monkeypatch, yt_run_log=log)
+    assert {c["key"]: c["collect_failed"] for c in d["channels"]}["soombi"] is True
+    assert d["last_daily_ok_at"] is None
