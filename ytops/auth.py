@@ -38,6 +38,20 @@ def should_rewrite(path: Path) -> bool:
     return home is None or not path.resolve().is_relative_to(home.resolve())
 
 
+def write_private(path: Path, text: str) -> None:
+    """Write a token file readable by the owner only (0600, parent 0700).
+
+    Opens with the mode so a new file is never world-readable even briefly;
+    chmod afterwards tightens a file that already existed with looser bits.
+    No-op on Windows, where these bits are not enforced.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.chmod(path, 0o600)
+
+
 def credentials(key: str):
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
@@ -47,5 +61,5 @@ def credentials(key: str):
     if not creds.valid:
         creds.refresh(Request())
         if should_rewrite(path):
-            path.write_text(creds.to_json(), encoding="utf-8")
+            write_private(path, creds.to_json())
     return creds
