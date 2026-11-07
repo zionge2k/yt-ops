@@ -49,11 +49,13 @@ def replace_channel(conn, table: str, channel_key: str, rows: list[dict], pk: li
     """Make `rows` the channel's complete set: delete its old rows, then upsert.
 
     For snapshot-style tables (yt_schedule) where a run finding nothing must clear
-    last run's rows. Autocommit is on, so the two statements are not atomic.
+    last run's rows. Delete and upsert share one transaction (the connection is autocommit,
+    so without it a failed upsert would leave the channel empty).
     """
-    with conn.cursor() as cur:
-        cur.execute(f"delete from {table} where channel_key = %s", (channel_key,))
-    return upsert(conn, table, rows, pk)
+    with conn.transaction():
+        with conn.cursor() as cur:
+            cur.execute(f"delete from {table} where channel_key = %s", (channel_key,))
+        return upsert(conn, table, rows, pk)
 
 
 def fetch(conn, sql: str, params=()) -> list[dict]:
