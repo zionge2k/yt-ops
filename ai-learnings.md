@@ -30,3 +30,7 @@
 - 설계 전에 열쇠로 찔러 보는 게 문서보다 빨랐다. ChatGPT 검증표의 "쇼츠 제외 필터 없음" · "다차원 조합 불가" 는 실측으로 뒤집혔다.
 - 단위 테스트가 다 통과해도 실제 dry-run 한 번이 두 가지 400/403 을 잡았다. 수집기 작업 끝엔 꼭 `collect --all --dry-run --days 3`.
 - GitHub Actions 비밀값은 `env:` 로만 넘기고 `run:` 안에 `${{ inputs.* }}` 를 넣지 않는다(표현식 주입).
+
+## 2026-11-07 밤 — 재생목록 페이지 무한 반복으로 Data API 하루 한도 소진
+- 22:14 KST 꼬비(숨비 PC)가 Actions 에 건 `daily backfill_days=365` 가 새 `playlists` 수집기에서 **playlistItems.list 8,684회/10분**(같은 nextPageToken 이 계속 돌아옴) → shorts-factory 통장 10,000 소진 → 찰나·백댄·모로우·A2P 의 subs·video·live 수집 403.
+- 고침: `DataClient._pages` 가 같은 토큰 반복 · MAX_PAGES(100) 에서 멈춤 · 클라이언트당 CALL_BUDGET(600) 넘으면 예외. `uploads()` 도 같은 길. 새 수집기는 **먼저 dry-run 으로 호출 수를 센 뒤** Actions 에 건다.

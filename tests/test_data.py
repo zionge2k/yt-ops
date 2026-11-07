@@ -133,3 +133,31 @@ def test_uploads_dedupes_ids():
     sent = [i for kw in svc.kwargs("videos.list") for i in kw["id"].split(",")]
     assert len(sent) == len(set(sent)) == 70
     assert [i["id"] for i in items] == _ids(0, 70).split(",")
+
+
+def test_pages_stop_when_token_repeats():
+    # 2026-11-07: the API returned the same nextPageToken forever -> 8,684 calls in 10 minutes
+    svc = FakeService(playlistItems__list=[_pl(0, 50, "same")] * 50)
+    got = client(svc).playlist_items("pl1")
+    assert len(svc.kwargs("playlistItems.list")) == 2
+    assert len(got) == 100
+
+
+def test_pages_cap_at_max_pages():
+    from ytops import data
+    pages = [_pl(i * 50, 50, f"t{i}") for i in range(data.MAX_PAGES + 10)]
+    svc = FakeService(playlistItems__list=pages)
+    client(svc).playlist_items("pl1")
+    assert len(svc.kwargs("playlistItems.list")) == data.MAX_PAGES
+
+
+def test_call_budget_raises():
+    import pytest
+    from ytops.data import CallBudgetExceeded
+    svc = FakeService(channels__list=[CHANNEL] * 10)
+    c = DataClient(svc, sleep=lambda s: None, call_budget=3)
+    for _ in range(3):
+        c.channel_stats()
+    with pytest.raises(CallBudgetExceeded):
+        c.channel_stats()
+    assert c.calls == 3

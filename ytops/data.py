@@ -7,14 +7,28 @@ from typing import Callable
 from ytops._retry import execute
 
 BATCH = 50
+# 2026-11-07 incident: one playlist paged forever (same nextPageToken again and again) and
+# burned the day's Data API quota in ten minutes. Two guards, both per client (= per channel per run):
+MAX_PAGES = 100        # a list longer than 5,000 items is a bug, not a channel
+CALL_BUDGET = 600      # quota units a normal run never approaches (uploads ~40, playlists ~60)
+
+
+class CallBudgetExceeded(RuntimeError):
+    """Raised when one client has made more Data API calls than a sane run needs."""
 
 
 class DataClient:
-    def __init__(self, service, sleep: Callable[[float], None] = time.sleep):
+    def __init__(self, service, sleep: Callable[[float], None] = time.sleep,
+                 call_budget: int = CALL_BUDGET):
         self._service = service
         self._sleep = sleep
+        self.calls = 0
+        self._budget = call_budget
 
     def _run(self, request):
+        if self.calls >= self._budget:
+            raise CallBudgetExceeded(f"Data API call budget ({self._budget}) spent in this run")
+        self.calls += 1
         return execute(request, self._sleep)
 
     def channel_stats(self) -> dict:
@@ -39,17 +53,14 @@ class DataClient:
         if not items:
             return []
         playlist = items[0]["contentDetails"]["relatedPlaylists"]["uploads"]
-        ids: list[str] = []
-        token = None
-        while max_items is None or len(ids) < max_items:
+        def req(token):
             kwargs = dict(part="contentDetails", playlistId=playlist, maxResults=BATCH)
             if token:
                 kwargs["pageToken"] = token
-            page = self._run(self._service.playlistItems().list(**kwargs))
-            ids.extend(i["contentDetails"]["videoId"] for i in page.get("items", []))
-            token = page.get("nextPageToken")
-            if not token:
-                break
+            return self._service.playlistItems().list(**kwargs)
+
+        ids = [i["contentDetails"]["videoId"]
+               for i in self._pages(req, max_items=max_items)]
         ids = list(dict.fromkeys(ids))  # a playlist may list a video more than once
         if max_items is not None:
             ids = ids[:max_items]
@@ -69,16 +80,23 @@ class DataClient:
                     out.append(item)
         return out
 
-    def _pages(self, make_request) -> list[dict]:
-        """All items of a paged list; make_request(page_token) builds one request."""
+    def _pages(self, make_request, max_items: int | None = None) -> list[dict]:
+        """All items of a paged list; make_request(page_token) builds one request.
+
+        Stops on a missing token, a token already seen (the API can hand the same
+        nextPageToken back forever), MAX_PAGES, or max_items.
+        """
         items: list[dict] = []
         token = None
-        while True:
+        seen_tokens: set[str] = set()
+        for _ in range(MAX_PAGES):
             page = self._run(make_request(token))
             items.extend(page.get("items", []))
             token = page.get("nextPageToken")
-            if not token:
+            if not token or token in seen_tokens or (max_items is not None and len(items) >= max_items):
                 return items
+            seen_tokens.add(token)
+        return items
 
     def playlists(self) -> list[dict]:
         """Every playlist of the channel (snippet + contentDetails)."""
