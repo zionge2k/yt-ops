@@ -129,12 +129,22 @@ def _h48(by_day, latest, up, down, comparable) -> dict:
             "status": periods.color_of(pct, up, down), "days": cur_days}
 
 
-def _live_state(rows) -> dict | None:
-    """State of the channel's newest snapshot: active broadcasts only (none rows mean off)."""
+LIVE_STALE_AFTER = timedelta(hours=1)
+
+
+def _live_state(rows, now) -> dict | None:
+    """State of the channel's newest snapshot: active broadcasts only (none rows mean off).
+
+    No snapshot, or one older than LIVE_STALE_AFTER (live collection stopped), means the state
+    is unknown (on=None) rather than a stale "on air".
+    """
+    unknown = {"on": None, "dual": False, "count": 0, "viewers": None, "views": None,
+               "title": None, "taken_at": None, "stale": False}
     if not rows:
-        return {"on": False, "dual": False, "count": 0, "viewers": None, "views": None,
-                "title": None, "taken_at": None}
+        return unknown
     taken_at = max(r["taken_at"] for r in rows)
+    if now - taken_at > LIVE_STALE_AFTER:
+        return {**unknown, "taken_at": taken_at, "stale": True}
     active = [r for r in rows if r["taken_at"] == taken_at
               and r.get("broadcast_id") != "none" and r.get("life_cycle") == "live"]
     return {
@@ -142,7 +152,7 @@ def _live_state(rows) -> dict | None:
         "viewers": _sum(r.get("concurrent") for r in active),
         "views": _sum(r.get("views") for r in active),
         "title": active[0].get("title") if active else None,
-        "taken_at": taken_at,
+        "taken_at": taken_at, "stale": False,
     }
 
 
@@ -280,7 +290,8 @@ def _subs_sources(rows) -> dict:
             "lost": _sum(r.get("subs_lost") for r in rows)}
 
 
-def build(conn, *, today: date, config) -> dict:
+def build(conn, *, today: date, config, now: datetime | None = None) -> dict:
+    now = now or datetime.now(timezone.utc)
     channels, th = config["channels"], config["thresholds"]
     up, down = th["up_pct"], th["down_pct"]
     keys = [k for k in ORDER if k in channels] + [k for k in channels if k not in ORDER]
@@ -329,7 +340,7 @@ def build(conn, *, today: date, config) -> dict:
         board[k] = {
             "subscribers": subs_n,
             "h48": _h48(by_day, latest, up, down, comparable),
-            "live": _live_state([r for r in live_rows if r["channel_key"] == k]) if ch.is_live else None,
+            "live": _live_state([r for r in live_rows if r["channel_key"] == k], now) if ch.is_live else None,
             "health": health_of(monet),
             "monet": monet,
         }
@@ -348,7 +359,7 @@ def build(conn, *, today: date, config) -> dict:
 
     return {
         "v": 3,
-        "generated_at": datetime.now(timezone.utc),
+        "generated_at": now,
         "latest_day": latest,
         "lag_days": (today - latest).days if latest else None,
         "order": list(ORDER),

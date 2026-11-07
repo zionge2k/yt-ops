@@ -6,6 +6,7 @@ from ytops import registry, render
 
 UTC = timezone.utc
 TODAY = date(2026, 11, 7)
+NOW = datetime(2026, 11, 7, 1, 10, tzinfo=UTC)  # 10 minutes after the fixture's live snapshots
 LATEST = date(2026, 11, 4)
 KEYS = {"v", "generated_at", "latest_day", "lag_days", "order", "channels", "board",
         "subs_trend", "watch_trend", "detail", "errors"}
@@ -131,7 +132,7 @@ def _build(monkeypatch, **override):
         return _fake_fetch(conn, sql, params)
 
     monkeypatch.setattr(render, "fetch", fetch)
-    return json.loads(json.dumps(render.build(None, today=TODAY, config=_cfg()), default=render._json_default))
+    return json.loads(json.dumps(render.build(None, today=TODAY, config=_cfg(), now=NOW), default=render._json_default))
 
 
 def test_v3_top_level_shape(monkeypatch):
@@ -164,10 +165,10 @@ def test_board_live_state(monkeypatch):
     d = _build(monkeypatch)["board"]
     # newest taken_at only; broadcast b3 (complete) excluded; viewers sum skips None
     assert d["soombi"]["live"] == {"on": True, "dual": True, "count": 2, "viewers": 3, "views": 150,
-                                   "title": "x", "taken_at": "2026-11-07T01:00:00+00:00"}
+                                   "title": "x", "taken_at": "2026-11-07T01:00:00+00:00", "stale": False}
     assert d["backthen"]["live"] == {"on": False, "dual": False, "count": 0, "viewers": None, "views": None,
-                                     "title": None, "taken_at": "2026-11-07T01:00:00+00:00"}
-    assert d["justsoombi"]["live"]["taken_at"] is None and d["justsoombi"]["live"]["on"] is False
+                                     "title": None, "taken_at": "2026-11-07T01:00:00+00:00", "stale": False}
+    assert d["justsoombi"]["live"]["taken_at"] is None and d["justsoombi"]["live"]["on"] is None
     assert d["urachacha"]["live"] is None  # not a live channel
 
 
@@ -246,6 +247,15 @@ def test_detail_top_videos_and_genres(monkeypatch):
                             {"name": "Waltz", "hours": 11.0, "share": 40.7}]
     assert _build(monkeypatch)["detail"]["a2p"]["genres"] == []
     assert _build(monkeypatch)["detail"]["a2p"]["top_long"] == []
+
+
+def test_live_state_stale_snapshot_is_unknown(monkeypatch):
+    # newest snapshot of every channel is over an hour old (01:10 vs 00:00): live collection stopped, state unknown
+    rows = [{**r, "taken_at": r["taken_at"] - timedelta(hours=1)} for r in ROWS["yt_live_snapshot"]]
+    d = _build(monkeypatch, yt_live_snapshot=rows)["board"]
+    assert d["soombi"]["live"]["on"] is None and d["soombi"]["live"]["stale"] is True
+    assert d["soombi"]["live"]["count"] == 0 and d["soombi"]["live"]["title"] is None
+    assert d["soombi"]["live"]["taken_at"] == "2026-11-07T00:00:00+00:00"
 
 
 def test_detail_subs_sources(monkeypatch):
@@ -343,7 +353,7 @@ def test_missing_v3_tables_do_not_stop_render(monkeypatch):
         return _fake_fetch(conn, sql, params)
 
     monkeypatch.setattr(render, "fetch", fetch)
-    d = json.loads(json.dumps(render.build(None, today=TODAY, config=_cfg()), default=render._json_default))
+    d = json.loads(json.dumps(render.build(None, today=TODAY, config=_cfg(), now=NOW), default=render._json_default))
     dt = d["detail"]["soombi"]
     assert dt["top_long"] == [] and dt["genres"] == []
     assert dt["audience"]["viewers"]["age_gender"] == []
