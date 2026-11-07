@@ -8,7 +8,7 @@ UTC = timezone.utc
 TODAY = date(2026, 11, 7)
 NOW = datetime(2026, 11, 7, 1, 10, tzinfo=UTC)  # 10 minutes after the fixture's live snapshots
 LATEST = date(2026, 11, 4)
-KEYS = {"v", "generated_at", "latest_day", "lag_days", "order", "channels", "board",
+KEYS = {"v", "generated_at", "last_daily_ok_at", "latest_day", "lag_days", "order", "channels", "board",
         "subs_trend", "watch_trend", "detail", "errors"}
 
 
@@ -394,3 +394,18 @@ def test_daily_failure_is_cleared_by_a_later_daily_run(monkeypatch):
     ]
     d = _build(monkeypatch, yt_run_log=log)
     assert {c["key"]: c["collect_failed"] for c in d["channels"]}["soombi"] is False
+
+
+def test_last_daily_ok_at_ignores_live_only_runs(monkeypatch):
+    t_daily = datetime(2026, 11, 7, 0, 30, tzinfo=UTC)
+    log = [
+        {"run_id": "l2", "started_at": datetime(2026, 11, 7, 4, 0, tzinfo=UTC), "ok": True, "collectors": ["live"]},
+        {"run_id": "d2", "started_at": datetime(2026, 11, 7, 2, 0, tzinfo=UTC), "ok": False,
+         "collectors": ["channel_daily", "live"]},
+        {"run_id": "d1", "started_at": t_daily, "ok": True, "collectors": ["channel_daily", "live"]},
+    ]
+    d = _build(monkeypatch, yt_run_log=log)
+    assert d["last_daily_ok_at"] == t_daily.isoformat()
+    # old rows without `collectors` count as full runs; no daily-capable ok run -> None
+    assert _build(monkeypatch, yt_run_log=[{"run_id": "o", "started_at": t_daily, "ok": True}])["last_daily_ok_at"] == t_daily.isoformat()
+    assert _build(monkeypatch, yt_run_log=log[:1])["last_daily_ok_at"] is None

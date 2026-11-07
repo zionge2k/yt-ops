@@ -245,19 +245,12 @@ function renderChannel(key) {
 }
 
 // ---------- bands and errors ----------
-const STALE_HOURS = 48;
-/** Whole days since generated_at when older than 48 hours, else 0 (fresh or unparsable). */
-function staleDays(generatedAtIso, nowMs) {
-  const t = Date.parse(generatedAtIso);
-  if (Number.isNaN(t)) return 0;
-  const hours = (nowMs - t) / 3600000;
-  return hours > STALE_HOURS ? Math.floor(hours / 24) : 0;
-}
-
 function renderBands() {
   if (sampleMode) return `<div class="sample-band">예시 데이터예요. 실제 숫자가 아니에요.</div>`;
-  const stale = staleDays(DATA.generated_at, Date.now());
-  return stale ? `<div class="stale-band">상황판이 ${stale}일째 갱신되지 않았어요. 꼬비에게 알려 주세요.</div>` : "";
+  // Keyed to the last successful daily collection: live runs re-render every 2 hours, so generated_at is always fresh.
+  if (DATA.last_daily_ok_at === null) return `<div class="stale-band">최근 일일 수집 성공 기록이 없어요. 꼬비에게 알려 주세요.</div>`;
+  const stale = staleDays(DATA.last_daily_ok_at ?? DATA.generated_at, Date.now());
+  return stale ? `<div class="stale-band">일일 수집이 ${stale}일째 성공하지 못했어요. 꼬비에게 알려 주세요.</div>` : "";
 }
 
 function renderErrors() {

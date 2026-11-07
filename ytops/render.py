@@ -132,6 +132,14 @@ def _channel_errors(runs, key) -> list[dict]:
     return [picked[k] for k in sorted(picked)]
 
 
+def _last_daily_ok_at(runs):
+    """started_at of the newest successful run that ran channel_daily (runs: newest first)."""
+    for r in runs:
+        if r.get("ok") and _ran_any(r, ("channel_daily",)):
+            return r.get("started_at")
+    return None
+
+
 def health_of(monet: dict) -> str:
     """Card color: monetized = red; else min(subs %, hours %) >= 70 red, < 30 blue, between purple."""
     if monet["monetized"]:
@@ -346,7 +354,7 @@ def build(conn, *, today: date, config, now: datetime | None = None) -> dict:
     for r in fetch(conn, "select * from yt_manual"):
         if r["field"] in PEAK_FIELDS.values():
             notes.setdefault(r["channel_key"], {})[r["field"]] = r.get("note")
-    runs = fetch(conn, "select * from yt_run_log order by started_at desc limit 50")
+    runs = fetch(conn, "select * from yt_run_log order by started_at desc limit 200")
 
     recent_start = latest - timedelta(days=RECENT_DAYS - 1) if latest else None
     vd_rows = _safe_fetch(conn, "select * from yt_video_daily where day >= %s and day <= %s",
@@ -395,6 +403,7 @@ def build(conn, *, today: date, config, now: datetime | None = None) -> dict:
     return {
         "v": 3,
         "generated_at": now,
+        "last_daily_ok_at": _last_daily_ok_at(runs),
         "latest_day": latest,
         "lag_days": (today - latest).days if latest else None,
         "order": list(ORDER),
