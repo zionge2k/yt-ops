@@ -136,9 +136,12 @@ def _channel_errors(runs, key) -> list[dict]:
 
 
 def _last_daily_ok_at(runs):
-    """started_at of the newest successful run that ran channel_daily (runs: newest first)."""
+    """started_at of the newest run that ran channel_daily without a core failure (runs: newest first).
+
+    Side-collector errors (playlists, audience ...) do not count: the card's numbers were still collected.
+    """
     for r in runs:
-        if r.get("ok") and _ran_any(r, ("channel_daily",)):
+        if _ran_any(r, ("channel_daily",)) and not any(_failed(e.get("stage")) for e in (r.get("errors") or [])):
             return r.get("started_at")
     return None
 

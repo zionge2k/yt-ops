@@ -421,7 +421,8 @@ def test_last_daily_ok_at_ignores_live_only_runs(monkeypatch):
     log = [
         {"run_id": "l2", "started_at": datetime(2026, 11, 7, 4, 0, tzinfo=UTC), "ok": True, "collectors": ["live"]},
         {"run_id": "d2", "started_at": datetime(2026, 11, 7, 2, 0, tzinfo=UTC), "ok": False,
-         "collectors": ["channel_daily", "live"]},
+         "collectors": ["channel_daily", "live"],
+         "errors": [{"channel": "soombi", "stage": "channel_daily", "error": "E", "message": "m"}]},
         {"run_id": "d1", "started_at": t_daily, "ok": True, "collectors": ["channel_daily", "live"]},
     ]
     d = _build(monkeypatch, yt_run_log=log)
@@ -429,6 +430,18 @@ def test_last_daily_ok_at_ignores_live_only_runs(monkeypatch):
     # old rows without `collectors` count as full runs; no daily-capable ok run -> None
     assert _build(monkeypatch, yt_run_log=[{"run_id": "o", "started_at": t_daily, "ok": True}])["last_daily_ok_at"] == t_daily.isoformat()
     assert _build(monkeypatch, yt_run_log=log[:1])["last_daily_ok_at"] is None
+
+
+def test_last_daily_ok_at_ignores_side_errors(monkeypatch):
+    # run.ok is False because a side collector failed, but the core numbers were collected
+    t = datetime(2026, 11, 7, 0, 30, tzinfo=UTC)
+    side = [{"channel": "soombi", "stage": "playlists", "error": "E", "message": "m"},
+            {"channel": "a2p", "stage": "store:yt_playlist_item", "error": "E", "message": "m"}]
+    log = [{"run_id": "d", "started_at": t, "ok": False, "collectors": ["channel_daily", "playlists"], "errors": side}]
+    assert _build(monkeypatch, yt_run_log=log)["last_daily_ok_at"] == t.isoformat()
+    # a core failure in any channel still disqualifies the run
+    core = [{"channel": "a2p", "stage": "client", "error": "E", "message": "m"}]
+    assert _build(monkeypatch, yt_run_log=[{**log[0], "errors": side + core}])["last_daily_ok_at"] is None
 
 
 def test_snapshot_under_three_hours_old_is_still_live(monkeypatch):
