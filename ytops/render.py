@@ -84,17 +84,52 @@ def _failed(stage) -> bool:
     return (stage or "") in FAILED_STAGES
 
 
-def _channel_errors(runs, key) -> list[dict]:
-    """Errors of the most recent run that covered this channel (runs: newest first).
+# Which collectors own a failure stage: only a run that ran one of them can say the stage recovered.
+_BOTH = ("channel_daily", "subs")
+STAGE_OWNERS = {"client": _BOTH, "channel_daily": ("channel_daily",), "subs": ("subs",),
+                "store:yt_channel_daily": _BOTH, "store:yt_subs_snapshot": _BOTH}
 
-    A run without a `channels` value (older rows) is treated as covering every channel.
+
+def _covers(run, key) -> bool:
+    """A run without a `channels` value (older rows) is treated as covering every channel."""
+    covered = run.get("channels")
+    return covered is None or key in covered
+
+
+def _ran_any(run, owners) -> bool:
+    """A run without a `collectors` value (older rows) is treated as having run every collector."""
+    ran = run.get("collectors")
+    return ran is None or any(o in ran for o in owners)
+
+
+def _channel_errors(runs, key) -> list[dict]:
+    """Errors shown for one channel (runs: newest first).
+
+    Failure stages of the card's core numbers come from the newest run that ran their owning
+    collector, so a later live-only run cannot clear a daily failure. Everything else comes from
+    the newest covering run and the newest covering live-only run (display only).
     """
-    for r in runs:
-        covered = r.get("channels")
-        if covered is None or key in covered:
-            return [{**e, "run_started_at": r.get("started_at")}
-                    for e in (r.get("errors") or []) if e.get("channel") == key]
-    return []
+    picked: dict[tuple[int, int], dict] = {}
+
+    def take(i, run, wanted):
+        for j, e in enumerate(run.get("errors") or []):
+            if e.get("channel") == key and wanted(e.get("stage")):
+                picked[(i, j)] = {**e, "run_started_at": run.get("started_at")}
+
+    covering = [(i, r) for i, r in enumerate(runs) if _covers(r, key)]
+    for stage, owners in STAGE_OWNERS.items():
+        for i, r in covering:
+            if _ran_any(r, owners):
+                take(i, r, lambda s, stage=stage: s == stage)
+                break
+    if covering:
+        i, r = covering[0]
+        take(i, r, lambda s: not _failed(s))
+    for i, r in covering:
+        if r.get("collectors") == ["live"]:
+            take(i, r, lambda s: True)
+            break
+    return [picked[k] for k in sorted(picked)]
 
 
 def health_of(monet: dict) -> str:

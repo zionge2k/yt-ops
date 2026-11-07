@@ -125,6 +125,7 @@ create table if not exists yt_run_log (
   counts jsonb,
   primary key (run_id)
 );
+alter table yt_run_log add column if not exists collectors jsonb;  -- collector names this run executed
 alter table yt_run_log enable row level security;
 
 -- 3판(2026-11-07-v3): 청중 · 재생목록

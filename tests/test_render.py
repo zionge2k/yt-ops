@@ -366,3 +366,31 @@ def test_empty_db(monkeypatch):
     b = d["board"]["soombi"]
     assert b["h48"] == {"cur": None, "prev": None, "pct": None, "status": "grey", "days": []}
     assert d["subs_trend"]["soombi"]["365"]["series"] == [] and d["watch_trend"]["soombi"]["7"]["total"] is None
+
+
+def test_live_only_run_does_not_clear_daily_failure(monkeypatch):
+    t1, t2 = datetime(2026, 11, 7, 0, 30, tzinfo=UTC), datetime(2026, 11, 7, 2, 0, tzinfo=UTC)
+    log = [  # newest first
+        {"run_id": "live", "started_at": t2, "channels": list(render.ORDER), "collectors": ["live"],
+         "errors": [{"channel": "backthen", "stage": "live", "error": "HttpError", "message": "m"}]},
+        {"run_id": "daily", "started_at": t1, "channels": list(render.ORDER),
+         "collectors": ["channel_daily", "subs", "live"],
+         "errors": [{"channel": "soombi", "stage": "channel_daily", "error": "HttpError", "message": "m"}]},
+    ]
+    d = _build(monkeypatch, yt_run_log=log)
+    flags = {c["key"]: c["collect_failed"] for c in d["channels"]}
+    assert flags["soombi"] is True and flags["backthen"] is False
+    assert d["board"]["soombi"]["h48"]["pct"] is None
+    # live-only errors still show for display
+    assert [e["stage"] for e in d["errors"]] == ["channel_daily", "live"]  # channel order: soombi, backthen
+
+
+def test_daily_failure_is_cleared_by_a_later_daily_run(monkeypatch):
+    t1, t2 = datetime(2026, 11, 6, 0, 30, tzinfo=UTC), datetime(2026, 11, 7, 0, 30, tzinfo=UTC)
+    log = [
+        {"run_id": "r2", "started_at": t2, "channels": list(render.ORDER), "collectors": ["channel_daily"], "errors": []},
+        {"run_id": "r1", "started_at": t1, "channels": list(render.ORDER), "collectors": ["channel_daily"],
+         "errors": [{"channel": "soombi", "stage": "channel_daily", "error": "E", "message": "m"}]},
+    ]
+    d = _build(monkeypatch, yt_run_log=log)
+    assert {c["key"]: c["collect_failed"] for c in d["channels"]}["soombi"] is False
