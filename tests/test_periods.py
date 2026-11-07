@@ -21,3 +21,8 @@ def test_status_thresholds():
     assert periods.status_of(0.0, 5.0, -5.0) == "yellow"
     assert periods.status_of(-6.0, 5.0, -5.0) == "red"
     assert periods.status_of(None, 5.0, -5.0) == "grey"
+
+
+def test_pct_change_negative_prev():
+    assert periods.pct_change(4, -2) == 300.0
+    assert periods.pct_change(-4, -2) == -100.0

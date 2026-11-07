@@ -17,7 +17,7 @@ def previous(win: tuple[date, date]) -> tuple[date, date]:
 def pct_change(cur: float | None, prev: float | None) -> float | None:
     if cur is None or prev is None or prev == 0:
         return None
-    return round((cur - prev) / prev * 100, 1)
+    return round((cur - prev) / abs(prev) * 100, 1)
 
 
 def status_of(pct: float | None, up: float, down: float) -> str:

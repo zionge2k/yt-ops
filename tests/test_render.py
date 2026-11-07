@@ -75,6 +75,7 @@ def test_build_shape_from_fake_rows(monkeypatch):
     assert set(p7) == {"start", "end", "prev_start", "prev_end", "channels"}
     m = p7["channels"]["soombi"]
     assert set(m) == {"views", "subs_net", "watch_hours"}
+    assert m["views"]["pct"] == 25.0 and m["views"]["status"] == "green"
     assert m["views"]["cur"] == 100 and len(m["views"]["spark"]) == 7 and m["views"]["spark"][-1] == 100
     assert m["watch_hours"]["cur"] == 2.0 and m["subs_net"]["cur"] == 4
     assert d["periods"]["28"]["channels"]["soombi"]["views"]["cur"] == 180
