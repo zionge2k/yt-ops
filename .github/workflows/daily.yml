@@ -4,6 +4,8 @@ on:
   schedule:
     # 00:30 UTC = KST 09:30
     - cron: '30 0 * * *'
+    # 한 번만: 11/08 17:30 KST — 11/07 한도 사고로 실패한 shorts-factory 4채널 복구. 돌고 나면 지운다.
+    - cron: '30 8 8 11 *'
   workflow_dispatch:
     inputs:
       backfill_days:
