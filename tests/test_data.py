@@ -143,6 +143,15 @@ def test_pages_stop_when_token_repeats():
     assert len(got) == 100
 
 
+def test_pages_stop_on_empty_page_even_with_new_token():
+    # the 2026-11-07 playlist answered page 2 with zero items; a fresh token each time
+    # must not keep us reading empty pages up to MAX_PAGES
+    svc = FakeService(playlistItems__list=[_pl(0, 2, "t1")] + [_pl(0, 0, f"t{i}") for i in range(2, 20)])
+    got = client(svc).playlist_items("pl1")
+    assert len(svc.kwargs("playlistItems.list")) == 2
+    assert len(got) == 2
+
+
 def test_pages_cap_at_max_pages():
     from ytops import data
     pages = [_pl(i * 50, 50, f"t{i}") for i in range(data.MAX_PAGES + 10)]

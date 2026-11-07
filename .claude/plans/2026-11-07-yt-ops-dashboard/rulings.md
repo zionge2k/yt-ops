@@ -93,3 +93,11 @@
 - 미정(계속): 채널 전체 상태 규칙(빨강 2개↑=떨어짐), 기준값이 아주 작을 때의 퍼센트(+70,900%) 표시.
 - 비밀번호 `DASH_PASSWORD` 11/07 19:22 교체(형아 지정). 값은 기록하지 않는다.
 - (11/07 밤) Reporting API 두 프로젝트 켬(gcloud). reach 보고서 실존 확인. jobs.create 는 안 함 — 형아 결정 대기(만들면 다음 날부터 CSV 가 쌓이기 시작, 저장은 V2-a 에서).
+
+## 2026-11-07 밤 — Data API 한도 사고
+
+- 사실: 22:14 KST PC 꼬비가 3판(42641a9, playlists 수집기 + live.yml 20분 폴링)을 push 하고 daily 를 BACKFILL_DAYS=365 로 수동 실행. 숨비찰나의 옛 재생목록 `PLaHLZbm2iaaM`(id 13자, 영상 3개)이 2쪽부터 빈 응답 + 같은 nextPageToken 을 영원히 돌려줘 playlistItems.list 8,684회 → shorts-factory 하루 한도 소진(9,939/10,000). Mac · Actions 18:27 실행 · 숨비 앱은 무관(Monitoring 으로 확인). 한도는 11/08 17:00 KST 에 풀림.
+- Ruling(PC, 2797c7a): 토큰 반복 차단 · MAX_PAGES 100 · 클라이언트(=채널·run)당 CALL_BUDGET 600. — 틀리면 정상 채널이 600 넘을 때 수집 실패(지금 run 당 ~40~60).
+- Ruling(Mac, 보완): 빈 쪽이면 토큰이 새 것이어도 멈춤(사고 응답 그대로 테스트). 
+- 미결(형아): live.yml 20분 폴링 유지 여부 — 11/07 낮에 "2시간 폴링도 과하다" 고 뺀 결정과 어긋남. 비용은 작음(Data ~3단위 × 3채널 × 72회/일, Pages 배포 72회/일).
+- 할 일: 11/08 17:00 이후 daily 수동 실행으로 shorts-factory 4채널 복구(09:30 자동 실행은 403 으로 실패 예정).

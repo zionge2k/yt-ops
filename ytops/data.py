@@ -84,16 +84,19 @@ class DataClient:
         """All items of a paged list; make_request(page_token) builds one request.
 
         Stops on a missing token, a token already seen (the API can hand the same
-        nextPageToken back forever), MAX_PAGES, or max_items.
+        nextPageToken back forever), an empty page (the 2026-11-07 playlist answered
+        page 2 with no items but still a token), MAX_PAGES, or max_items.
         """
         items: list[dict] = []
         token = None
         seen_tokens: set[str] = set()
         for _ in range(MAX_PAGES):
             page = self._run(make_request(token))
-            items.extend(page.get("items", []))
+            got = page.get("items", [])
+            items.extend(got)
             token = page.get("nextPageToken")
-            if not token or token in seen_tokens or (max_items is not None and len(items) >= max_items):
+            if (not token or not got or token in seen_tokens
+                    or (max_items is not None and len(items) >= max_items)):
                 return items
             seen_tokens.add(token)
         return items
