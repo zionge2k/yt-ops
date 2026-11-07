@@ -10,6 +10,7 @@
   - `AGE_KEY` — 금고 복호화용 age 비공개 키
   - `SUPABASE_DB_URL` — Supabase Session pooler 연결 문자열
   - `DASH_PASSWORD` — 대시보드 비밀번호 (숨비에게 전달)
+  - `DASH_PASSWORD` 는 길고 무작위로(예: 20자 이상) — `data.enc` 는 누구나 내려받아 오프라인 대입을 시도할 수 있다.
 - [ ] Settings → Pages → Source = **GitHub Actions**.
 - [ ] Supabase 스키마 적용: `.env` 에 `SUPABASE_DB_URL` 넣고 `python -m ytops schema --apply`.
 

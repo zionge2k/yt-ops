@@ -7,3 +7,4 @@ site/data.enc
 .claude/*
 !.claude/plans/
 *.egg-info/
+uv.lock

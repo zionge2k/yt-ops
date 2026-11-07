@@ -1,0 +1,30 @@
+# ai-learnings — yt-ops
+
+다음에 같은 일을 더 빨리 하기 위한 발견. 날짜는 실측일.
+
+## YouTube Analytics API (2026-11-07 실측)
+
+- **데이터는 3일 늦는다.** 11/07 에 최신 `day` 가 11/04. "어제까지" 를 가정하지 말고 API 가 돌려준 마지막 날을 기준일로 쓴다.
+- **`startIndex` 페이지 넘김은 믿을 수 없다.** 같은 질의를 `maxResults=200` 한 번에 받으면 109행, 50씩 넘기면 58행. `country` 보고서는 2쪽에서 500. → 한 번에 크게(1000) 받고, 꽉 차면 `TruncationError` 로 실패를 드러낸다(조용한 절단 금지).
+- **`dims=video,day` 는 `filters=video==<id,…>` 가 필수.** 필터 없이는 400 "query not supported". id 50개까지 OK, 100개는 500. 창 길이에 맞춰 `min(50, 999 // 일수)` 개씩 묶는다(꼭 1000행이면 상한에 닿아 TruncationError).
+- **`month` 차원은 시작·끝이 월 경계여야 한다.** 아니면 400 "does not align". 365일 합계는 날짜 차원 없이 `creatorContentType` 만으로 받는다.
+- **데이터 없는 날은 행이 아예 없다.** 90일 창에 61행이 정상일 수 있다(채널이 어리거나 조회 0). 빈 날은 0 이 아니라 `null` 로 둔다.
+- 되는 조합: `day,creatorContentType`(+engagedViews·subscribersGained), `day,liveOrOnDemand`, `ageGroup,gender` + `subscribedStatus==SUBSCRIBED`, `insightTrafficSourceDetail` + `insightTrafficSourceType==YT_SEARCH;creatorContentType==videoOnDemand`.
+- `creatorContentTypeUnspecified` 행에 채널 페이지 직접 구독 증감이 따로 잡힌다. 쇼츠+롱폼+라이브 합이 전체와 안 맞는 이유.
+- `liveOrOnDemand` 로 라이브 중 시청과 다시보기가 정확히 갈린다. BACK THEN 11/1~2 는 라이브 중 40h, 다시보기 106h.
+- 정렬 기본값 `-views` 는 views 가 metrics 에 없으면 400. 기본 정렬은 `-<첫 metric>`.
+
+## YouTube Data API
+
+- `liveBroadcasts.list(broadcastStatus=active)` 에 `mine=true` 를 같이 주면 400. 열쇠가 채널을 가리키니 생략.
+- 라이브를 켠 적 없는 채널은 `liveBroadcasts.list` 가 403 → "방송 없음" 으로 처리하고, `is_live=False` 채널은 아예 호출하지 않는다.
+- `concurrentViewers` 는 0 이면 키 자체가 없다. 없음 = `None`, "0" = 0 으로 구별.
+- 예약 영상은 업로드 재생목록에 `privacyStatus=private` + `status.publishAt` 으로 섞여 나온다. 같은 호출로 예약 캘린더와 공개 목록을 둘 다 만든다.
+- `subscriberCount` 는 1,000 이상이면 3자리 반올림. 1,000 미만일 때 값을 기준점으로 적어 두고 Analytics 일별 증감을 더해 정확값을 잇는다.
+- Reporting API(노출수·CTR)는 GCP 프로젝트에서 따로 켜야 한다(403 "not enabled"). 켜기 전엔 보고서 유형 실존도 못 본다.
+
+## 공정
+
+- 설계 전에 열쇠로 찔러 보는 게 문서보다 빨랐다. ChatGPT 검증표의 "쇼츠 제외 필터 없음" · "다차원 조합 불가" 는 실측으로 뒤집혔다.
+- 단위 테스트가 다 통과해도 실제 dry-run 한 번이 두 가지 400/403 을 잡았다. 수집기 작업 끝엔 꼭 `collect --all --dry-run --days 3`.
+- GitHub Actions 비밀값은 `env:` 로만 넘기고 `run:` 안에 `${{ inputs.* }}` 를 넣지 않는다(표현식 주입).

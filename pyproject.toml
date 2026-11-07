@@ -21,8 +21,8 @@ dev = ["pytest"]
 [project.scripts]
 ytops = "ytops.cli:main"
 
-[tool.setuptools]
-packages = ["ytops"]
+[tool.setuptools.packages.find]
+include = ["ytops*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
