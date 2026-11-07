@@ -15,6 +15,7 @@ Status: active
 - [x] Task 8 워크플로 · 문서
 - [x] Task 9 요청 시 CLI
 - [x] 최종 전체 리뷰(opus) + 수정 회차 1회 — 101 테스트 통과
+- [x] code-review 2회 + 수정 회차 2·3 (유령 예약 · 403 사유 · 라이브 PK · 백필 185 · store 실패 표시 · 60일 자동중단 대비 · 채널별 실패 판정) — 112 테스트
 - [ ] Task 10 통합 검증 (형아 Phase 0 뒤)
 
 ## Resume Point
