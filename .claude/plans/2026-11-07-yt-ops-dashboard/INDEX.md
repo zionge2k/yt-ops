@@ -21,6 +21,8 @@ Status: active
 - [x] 화면 2판 결정(11/07 저녁): 카드형 · 유동 그리드(최대 4열) · 상태 말 「떨어짐/흔들림/오름」 · 7일 비교는 그 전 4주 평균(커밋 98b035f) · 채널 찾기 줄 제거
 - [x] 화면 2판을 site/ 에 옮겨 push(b4cb268 · 2df3d1a 글꼴 integrity) → Actions 수동 실행 성공(run 42359702136, 18:27) → 새 비밀번호로 열림 · 저장된 비밀번호 재진입 확인(11/07 저녁). 시안 폴더 `docs/mockups/` 와 실측 캡처는 진짜 숫자가 있어 커밋하지 않음(로컬만)
 - [x] Reporting API 켜기(11/07 밤, shorts-factory=bono3815 · nowbrd-release=zion.geek.nak 계정으로 gcloud enable) → 8채널 `reportTypes.list` 20종, `channel_reach_basic_a1`(노출수·CTR) 실존. jobs 는 아직 0개(V2-a 에서 jobs.create)
+- [x] 3판(PC 꼬비, 11/07 밤) 리뷰·보강(11/08 새벽): 한도 사고 가드 · half_trend · run_log collectors · 라이브 2시간 스냅샷 · 띠 기준 · 트랜잭션 — 24커밋, 테스트 177
+- [ ] 11/08 17:30 일회성 daily 실행 확인 후 `daily.yml` 의 `30 8 8 11 *` 줄 삭제 · live.yml 2시간 실행 첫 성공 확인
 - [ ] 남은 것: `config/channels.toml` 채널별 업로드 계획 숫자 채우기(지금은 전부 '계획 없음') · 숨비 폰으로 열어 보기 · 채널 전체 상태 규칙 확정 · 아주 작은 기준값의 퍼센트(+70,900% 류) 표시 규칙 · 11/08 09:30 첫 자동 실행 확인
 
 ## Resume Point

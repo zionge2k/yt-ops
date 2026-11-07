@@ -101,3 +101,13 @@
 - Ruling(Mac, 보완): 빈 쪽이면 토큰이 새 것이어도 멈춤(사고 응답 그대로 테스트). 
 - 미결(형아): live.yml 20분 폴링 유지 여부 — 11/07 낮에 "2시간 폴링도 과하다" 고 뺀 결정과 어긋남. 비용은 작음(Data ~3단위 × 3채널 × 72회/일, Pages 배포 72회/일).
 - 할 일: 11/08 17:00 이후 daily 수동 실행으로 shorts-factory 4채널 복구(09:30 자동 실행은 403 으로 실패 예정).
+
+## 2026-11-08 새벽 — 3판 리뷰 · 보강
+
+- 리뷰(opus) HIGH 3 · MED 5 · LOW 8 → 1~3차 수정 24커밋, 테스트 141 → 177(+JS 3). 재검토에서 11 FIXED · 새 발견 8 중 7 고침. 보고서는 세션 임시 폴더(요지는 아래).
+- Ruling(형아 11/08): 라이브 스냅샷은 **2시간마다**, 방송 중일 때만 행을 쓴다(`live.yml` cron `0 */2 * * *`). 20분 폴링은 뺌. 방송 뒤 정확히 2시간은 yt-auto-live 연동이 필요해 보류.
+- Ruling: run_log 에 `collectors` 기록. 채널 실패 판정 · 오류 목록 · 미갱신 띠(`last_daily_ok_at`)는 "그 수집기를 돌린 마지막 run" 기준. live 전용 run 은 is_live 채널만 만진다.
+- Ruling: `half_trend` 는 절반 **평균** 비교(홀수면 가운데 날 버림). 3판 spec 의 "합" 은 홀수 창에서 치우쳤음.
+- Ruling: 페이지 상한(MAX_PAGES)에 닿으면 PagingAborted 예외. 재생목록 수가 itemCount 의 90% 미만이면 오류로 끝내 replace 가 좋은 행을 지우지 않음. replace_channel 은 트랜잭션.
+- Ruling: 스키마 적용은 daily 에서만. 11/08 01:40 push 직후 Mac 에서 `schema --apply` 수동 실행(옛 live 행 8개 백필 확인).
+- 보류(minor): N5 daily·live 동시 Pages 배포 가능성(배포 job 분리) · L6 구독자 복원선 3일 어긋남 · L8 프로젝트 단위 호출 상한 · L2 일회성 cron(`30 8 8 11 *`) 은 11/08 17:30 실행 뒤 지울 것.
