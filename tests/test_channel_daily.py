@@ -11,7 +11,7 @@ NOW = datetime(2026, 11, 7, 1, 0, tzinfo=timezone.utc)
 Q1 = "day"
 Q2 = "day,creatorContentType"
 Q3 = "day,liveOrOnDemand"
-Q5 = "month,creatorContentType"
+Q5 = "creatorContentType"
 
 
 class FakeAnalytics:
@@ -50,10 +50,9 @@ def full():
             {"day": "2026-11-02", "liveOrOnDemand": "ON_DEMAND", "estimatedMinutesWatched": 12},
         ],
         Q5: [
-            {"month": "2025-12", "creatorContentType": "liveStream", "estimatedMinutesWatched": 1000},
-            {"month": "2026-01", "creatorContentType": "liveStream", "estimatedMinutesWatched": 500},
-            {"month": "2026-01", "creatorContentType": "shorts", "estimatedMinutesWatched": 70},
-            {"month": "2026-01", "creatorContentType": "videoOnDemand", "estimatedMinutesWatched": 9},
+            {"creatorContentType": "liveStream", "estimatedMinutesWatched": 1500},
+            {"creatorContentType": "shorts", "estimatedMinutesWatched": 70},
+            {"creatorContentType": "videoOnDemand", "estimatedMinutesWatched": 9},
         ],
     }
 

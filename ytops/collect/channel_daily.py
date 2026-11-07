@@ -73,7 +73,7 @@ def collect(ctx: CollectContext, start: date, end: date) -> dict[str, list[dict]
 def yearly_minutes(ctx: CollectContext) -> dict:
     """Watch minutes by content type over the last 365 days (query 5)."""
     start, end = ctx.today - timedelta(days=365), ctx.today - timedelta(days=1)
-    rows = ctx.analytics.query(start, end, "month,creatorContentType", _MINUTES)
+    rows = ctx.analytics.query(start, end, "creatorContentType", _MINUTES)
     out: dict = {"min_live": None, "min_vod": None, "min_shorts": None, "start": start, "end": end}
     if rows:  # no rows at all stays None (no data), otherwise absent types are 0
         out.update(min_live=0, min_vod=0, min_shorts=0)
