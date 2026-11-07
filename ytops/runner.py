@@ -99,10 +99,9 @@ def slices(start: date, end: date, size: int = CHANNEL_DAILY_SLICE) -> list[tupl
 def _collect_channel_daily(module, ctx, start, end):
     merged: dict[str, list[dict]] = {}
     for i, (lo, hi) in enumerate(slices(start, end)):
-        out = module.collect(ctx, lo, hi)
+        # yearly minutes do not depend on the slice: query them with the first slice only
+        out = module.collect(ctx, lo, hi, with_yearly=(i == 0))
         for table, rows in out.items():
-            if table != "yt_channel_daily" and i > 0:
-                continue  # yearly minutes do not depend on the slice; keep the first copy only
             merged.setdefault(table, []).extend(rows)
     return merged
 

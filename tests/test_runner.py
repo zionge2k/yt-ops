@@ -7,7 +7,7 @@ TODAY = date(2026, 11, 7)
 
 
 def _fake_collector(rows_by_key):
-    def collect(ctx, start, end):
+    def collect(ctx, start, end, with_yearly=True):
         if ctx.analytics == "boom":
             raise RuntimeError("analytics down")
         return {"yt_channel_daily": rows_by_key(ctx)}
@@ -74,7 +74,7 @@ def test_subs_exact_uses_this_runs_rows_before_db_write(monkeypatch):
     # DB has the baseline but no channel_daily rows yet; this run's rows must count
     base = date(2026, 11, 1)
     monkeypatch.setattr(runner, "COLLECTORS", [
-        ("channel_daily", SimpleNamespace(collect=lambda ctx, s, e: {"yt_channel_daily": [
+        ("channel_daily", SimpleNamespace(collect=lambda ctx, s, e, **kw: {"yt_channel_daily": [
             {"channel_key": "a2p", "day": date(2026, 11, 2), "subs_gained": 5, "subs_lost": 1},
             {"channel_key": "a2p", "day": date(2026, 11, 3), "subs_gained": 2, "subs_lost": None}]})),
         ("subs", runner.subs),
@@ -101,7 +101,7 @@ def test_subs_exact_uses_this_runs_rows_before_db_write(monkeypatch):
 def test_subs_exact_over_1000_uses_this_runs_rows(monkeypatch):
     base = date(2026, 11, 1)
     monkeypatch.setattr(runner, "COLLECTORS", [
-        ("channel_daily", SimpleNamespace(collect=lambda ctx, s, e: {"yt_channel_daily": [
+        ("channel_daily", SimpleNamespace(collect=lambda ctx, s, e, **kw: {"yt_channel_daily": [
             {"channel_key": "a2p", "day": date(2026, 11, 1), "subs_gained": 3, "subs_lost": 0},
             {"channel_key": "a2p", "day": date(2026, 11, 2), "subs_gained": 5, "subs_lost": 1}]})),
         ("subs", runner.subs),
@@ -191,7 +191,7 @@ def test_default_today_is_kst_date(monkeypatch):
     seen = {}
     monkeypatch.setattr(runner, "datetime", FixedDatetime)
     monkeypatch.setattr(runner, "COLLECTORS", [("channel_daily", SimpleNamespace(
-        collect=lambda ctx, s, e: seen.update(today=ctx.today, end=e) or {}))])
+        collect=lambda ctx, s, e, **kw: seen.update(today=ctx.today, end=e) or {}))])
     monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
     monkeypatch.setattr(runner, "data_for_key", lambda k: "x")
     monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": "A"})
@@ -201,7 +201,7 @@ def test_default_today_is_kst_date(monkeypatch):
 
 def _schedule_setup(monkeypatch, rows):
     monkeypatch.setattr(runner, "COLLECTORS", [("schedule", SimpleNamespace(
-        collect=lambda ctx, s, e: {"yt_schedule": rows, "yt_channel_daily": [
+        collect=lambda ctx, s, e, **kw: {"yt_schedule": rows, "yt_channel_daily": [
             {"channel_key": "a2p", "day": date(2026, 11, 3), "views": 1}]}))])
     monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
     monkeypatch.setattr(runner, "data_for_key", lambda k: "x")
@@ -239,10 +239,12 @@ def test_slices_split_long_windows():
 def test_backfill_365_collects_channel_daily_in_slices(monkeypatch):
     calls = []
 
-    def collect(ctx, s, e):
+    def collect(ctx, s, e, with_yearly=True):
         calls.append((s, e))
-        return {"yt_channel_daily": [{"channel_key": "a2p", "day": s, "views": 1}],
-                "yt_yearly_minutes": [{"channel_key": "a2p", "as_of": ctx.today}]}
+        out = {"yt_channel_daily": [{"channel_key": "a2p", "day": s, "views": 1}]}
+        if with_yearly:
+            out["yt_yearly_minutes"] = [{"channel_key": "a2p", "as_of": ctx.today}]
+        return out
 
     monkeypatch.setattr(runner, "COLLECTORS", [("channel_daily", SimpleNamespace(collect=collect))])
     monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
@@ -252,6 +254,29 @@ def test_backfill_365_collects_channel_daily_in_slices(monkeypatch):
     assert calls == [(date(2025, 11, 7), date(2026, 5, 5)), (date(2026, 5, 6), date(2026, 11, 1)),
                      (date(2026, 11, 2), date(2026, 11, 6))]
     assert res.counts == {"yt_channel_daily": 3, "yt_yearly_minutes": 1}  # yearly kept once
+
+
+def test_backfill_365_queries_yearly_once(monkeypatch):
+    from ytops.collect import channel_daily
+
+    class Analytics:
+        def __init__(self):
+            self.dims = []
+
+        def query(self, start, end, dims, metrics, filters=None, sort=None, max_results=200):
+            self.dims.append(dims)
+            return []
+
+    an = Analytics()
+    monkeypatch.setattr(runner, "COLLECTORS", [("channel_daily", channel_daily)])
+    monkeypatch.setattr(runner, "analytics_for_key", lambda k: an)
+    monkeypatch.setattr(runner, "data_for_key", lambda k: "x")
+    monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": "A"})
+    res = runner.run_collect(["a2p"], days=365, dry_run=True, today=TODAY)
+    # 3 slices x 3 daily queries, but the 365-day creatorContentType query runs only once
+    assert an.dims.count("creatorContentType") == 1
+    assert an.dims.count("day") == 3 and len(an.dims) == 10
+    assert res.counts.get("yt_yearly_minutes") == 1
 
 
 def test_only_limits_collectors(monkeypatch):

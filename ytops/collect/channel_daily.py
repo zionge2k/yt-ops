@@ -8,7 +8,7 @@ from ytops.collect.context import CollectContext
 _BY_TYPE = {"shorts": "min_shorts", "liveStream": "min_live", "videoOnDemand": "min_vod"}
 _BY_LOL = {"LIVE": "min_lol_live", "ON_DEMAND": "min_lol_ondemand"}
 # Per-request cap (TruncationError otherwise). Largest query is day,creatorContentType:
-# 185-day backfill x <=5 content types = <=925 rows, still below it.
+# one 180-day slice (runner.CHANNEL_DAILY_SLICE) x <=5 content types = <=900 rows, still below it.
 MAX_ROWS = 1000
 _MINUTES = "estimatedMinutesWatched"
 
@@ -25,7 +25,8 @@ def _day(value: str) -> date:
     return date.fromisoformat(value)
 
 
-def collect(ctx: CollectContext, start: date, end: date) -> dict[str, list[dict]]:
+def collect(ctx: CollectContext, start: date, end: date, with_yearly: bool = True) -> dict[str, list[dict]]:
+    """with_yearly=False skips the 365-day minutes query (later slices of one backfill)."""
     days: dict[date, dict] = {}
 
     def row(day: date) -> dict:
@@ -69,6 +70,8 @@ def collect(ctx: CollectContext, start: date, end: date) -> dict[str, list[dict]
         {"channel_key": ctx.key, "day": day, **cols, "collected_at": collected_at}
         for day, cols in sorted(days.items())
     ]
+    if not with_yearly:
+        return {"yt_channel_daily": rows}
     y = yearly_minutes(ctx)
     yearly = {
         "channel_key": ctx.key, "as_of": ctx.today,
