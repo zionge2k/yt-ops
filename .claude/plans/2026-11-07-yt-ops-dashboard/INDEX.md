@@ -16,17 +16,18 @@ Status: active
 - [x] Task 9 요청 시 CLI
 - [x] 최종 전체 리뷰(opus) + 수정 회차 1회 — 101 테스트 통과
 - [x] code-review 2회 + 수정 회차 2·3 (유령 예약 · 403 사유 · 라이브 PK · 백필 185 · store 실패 표시 · 60일 자동중단 대비 · 채널별 실패 판정) — 112 테스트
-- [x] Phase 0 (11/07 꼬비 실행: 금고 재백업 · 공개 저장소 `zionge2k/yt-ops` · Secrets 4개 · Pages · 스키마 적용). Reporting API 켜기만 형아 몫으로 남음
+- [x] Phase 0 (11/07 꼬비 실행: 금고 재백업 · 공개 저장소 `zionge2k/yt-ops` · Secrets 4개 · Pages · 스키마 적용). Reporting API 는 11/07 밤 gcloud 로 두 프로젝트에 켬
 - [x] Task 10 통합 검증: 백필 185일 8채널 errors=0 · collect 2회 멱등 · 11/1~2 값 PDF/실측 일치 · Actions 수동 실행 성공 · Pages 비밀번호 열림 확인(11/07 16:26)
 - [x] 화면 2판 결정(11/07 저녁): 카드형 · 유동 그리드(최대 4열) · 상태 말 「떨어짐/흔들림/오름」 · 7일 비교는 그 전 4주 평균(커밋 98b035f) · 채널 찾기 줄 제거
 - [x] 화면 2판을 site/ 에 옮겨 push(b4cb268 · 2df3d1a 글꼴 integrity) → Actions 수동 실행 성공(run 42359702136, 18:27) → 새 비밀번호로 열림 · 저장된 비밀번호 재진입 확인(11/07 저녁). 시안 폴더 `docs/mockups/` 와 실측 캡처는 진짜 숫자가 있어 커밋하지 않음(로컬만)
-- [ ] 남은 것: 형아 Reporting API 켜기 → `reportTypes.list` 확인 · `config/channels.toml` 채널별 업로드 계획 숫자 채우기(지금은 전부 '계획 없음') · 숨비 폰으로 열어 보기 · 채널 전체 상태 규칙 확정 · 아주 작은 기준값의 퍼센트(+70,900% 류) 표시 규칙 · 11/08 09:30 첫 자동 실행 확인
+- [x] Reporting API 켜기(11/07 밤, shorts-factory=bono3815 · nowbrd-release=zion.geek.nak 계정으로 gcloud enable) → 8채널 `reportTypes.list` 20종, `channel_reach_basic_a1`(노출수·CTR) 실존. jobs 는 아직 0개(V2-a 에서 jobs.create)
+- [ ] 남은 것: `config/channels.toml` 채널별 업로드 계획 숫자 채우기(지금은 전부 '계획 없음') · 숨비 폰으로 열어 보기 · 채널 전체 상태 규칙 확정 · 아주 작은 기준값의 퍼센트(+70,900% 류) 표시 규칙 · 11/08 09:30 첫 자동 실행 확인
 
 ## Resume Point
 
 - 파일: `plan.md`(Task 10 절) · `docs/runbook.md`(형아 Phase 0 체크리스트 ①)
 - 단계: **운영 시작됨(2026-11-07).** 매일 KST 09:30 자동 수집 · 화면 https://zionge2k.github.io/yt-ops/ (비밀번호는 Actions Secret `DASH_PASSWORD`, 형아·숨비 공유). 아래 Phase 0 목록은 11/07 에 1 빼고 완료:
-  1. GCP 543780518761 에서 YouTube Reporting API 켜기 → 꼬비가 `reportTypes.list` 로 reach 보고서 실존 확인(2차 CTR 범위 확정)
+  1. ~~Reporting API 켜기~~ 11/07 밤 완료(두 프로젝트). reach 보고서 실존 확인됨 → V2-a 는 jobs.create 부터
   2. `~/kkobi/yt-channels-vault/scripts/backup.sh` 재실행(analytics.json 포함) + push
   3. GitHub 공개 저장소 `zionge2k/yt-ops` 생성 · Secrets 4개 · Pages Source=Actions → `git remote add origin … && git push -u origin main`
   4. `.env` 에 `SUPABASE_DB_URL` 넣고 `python -m ytops schema --apply` 승인

@@ -22,6 +22,8 @@
 - 예약 영상은 업로드 재생목록에 `privacyStatus=private` + `status.publishAt` 으로 섞여 나온다. 같은 호출로 예약 캘린더와 공개 목록을 둘 다 만든다.
 - `subscriberCount` 는 1,000 이상이면 3자리 반올림. 1,000 미만일 때 값을 기준점으로 적어 두고 Analytics 일별 증감을 더해 정확값을 잇는다.
 - Reporting API(노출수·CTR)는 GCP 프로젝트에서 따로 켜야 한다(403 "not enabled"). 켜기 전엔 보고서 유형 실존도 못 본다.
+- (11/07 밤 켬) 채널 열쇠는 GCP 프로젝트 둘에 나뉘고 주인 계정도 다르다: `shorts-factory-492813`(543780518761, soombi·backthen·a2p·urachacha) = bono3815, `nowbrd-release`(240395376214, justsoombi·soombicafe·pliwav·groovewav) = zion.geek.nak. `gcloud services enable youtubereporting.googleapis.com --project=… --account=…` 로 켰다. Mac 에 gcloud 설치됨(brew cask `gcloud-cli`).
+- 켠 직후 바로 `reportTypes.list` 가 8채널 모두 20종을 돌려줬다(전파 대기 없음). **`channel_reach_basic_a1` · `channel_reach_combined_a1` 실존** — 노출수·CTR 은 여기서. 보고서는 `jobs.create` 한 다음 날부터 쌓이므로 CTR 을 원하면 job 을 먼저 만들어 둬야 한다.
 
 ## 공정
 
