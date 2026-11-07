@@ -37,6 +37,15 @@ def test_cli_only_passes_collector_names(monkeypatch):
     assert got["kw"]["only"] is None
 
 
+def test_only_empty_is_error(monkeypatch):
+    import pytest
+    got = _capture(monkeypatch)
+    for bad in ("", "  ", " , "):
+        with pytest.raises(SystemExit):
+            cli.main(["collect", "--all", "--only", bad, "--dry-run"])
+    assert "keys" not in got
+
+
 def test_cli_requires_target(monkeypatch):
     import pytest
     _capture(monkeypatch)

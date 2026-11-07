@@ -29,9 +29,16 @@ def _keys(args) -> list[str]:
     return list(KEYS) if args.all else [resolve_key(args.channel)]
 
 
+def _only_names(raw: str) -> list[str]:
+    """argparse type for --only: an empty list must not silently mean "run everything"."""
+    names = [n.strip() for n in raw.split(",") if n.strip()]
+    if not names:
+        raise argparse.ArgumentTypeError("--only needs at least one collector name")
+    return names
+
+
 def _only(args) -> list[str] | None:
-    raw = getattr(args, "only", None)
-    return [n.strip() for n in raw.split(",") if n.strip()] if raw else None
+    return getattr(args, "only", None)
 
 
 def _collect(args, *, days: int, video_days: int) -> int:
@@ -95,7 +102,7 @@ def main(argv: list[str] | None = None) -> int:
     _targets(c)
     c.add_argument("--days", type=int, default=10)
     c.add_argument("--dry-run", action="store_true")
-    c.add_argument("--only", help="comma-separated collector names (e.g. live)")
+    c.add_argument("--only", type=_only_names, help="comma-separated collector names (e.g. live)")
     b = sub.add_parser("backfill")
     _targets(b)
     b.add_argument("--days", type=int, default=185,
@@ -103,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
                         "comparison needs a full previous window; 365 for the subscriber chart — channel daily is "
                         "collected in 180-day slices); per-video daily stays 28")
     b.add_argument("--dry-run", action="store_true")
-    b.add_argument("--only", help="comma-separated collector names")
+    b.add_argument("--only", type=_only_names, help="comma-separated collector names")
     sub.add_parser("status")
     r = sub.add_parser("render")
     r.add_argument("--out", required=True)
