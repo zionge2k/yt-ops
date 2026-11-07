@@ -49,3 +49,25 @@ def test_playlists_rows_and_items():
 def test_playlists_empty():
     c = CollectContext("soombi", CH, None, FakeData([], {}), TODAY, NOW)
     assert playlists.collect(c, TODAY, TODAY) == {"yt_playlist": [], "yt_playlist_item": []}
+
+
+def test_truncated_playlist_raises_instead_of_partial():
+    import pytest
+    data = FakeData(
+        [{"id": "pl1", "snippet": {"title": "Big"}, "contentDetails": {"itemCount": 120}}],
+        {"pl1": [_item(f"v{i}") for i in range(50)]},
+    )
+    c = CollectContext("soombi", CH, None, data, TODAY, NOW)
+    with pytest.raises(RuntimeError, match="playlist pl1 truncated: 50/120"):
+        playlists.collect(c, TODAY, TODAY)
+
+
+def test_small_shortfall_is_tolerated():
+    # real legacy playlist: itemCount 3 but the API lists 2 (private/deleted videos)
+    data = FakeData(
+        [{"id": "pl1", "snippet": {"title": "Old"}, "contentDetails": {"itemCount": 3}}],
+        {"pl1": [_item("v1"), _item("v2")]},
+    )
+    c = CollectContext("soombi", CH, None, data, TODAY, NOW)
+    out = playlists.collect(c, TODAY, TODAY)
+    assert len(out["yt_playlist_item"]) == 2
