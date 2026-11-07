@@ -60,6 +60,8 @@ jobs:
       - name: 라이브 수집
         id: collect
         continue-on-error: true
+        # explicit shell: the default `bash -e` has no pipefail, so tee would hide python's exit code
+        shell: bash
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: python -m ytops collect --all --only live | tee "$RUNNER_TEMP/collect.log"

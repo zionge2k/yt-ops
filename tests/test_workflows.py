@@ -37,3 +37,24 @@ def test_daily_keep_alive_enables_both_workflows():
 def test_live_alert_step_tolerates_quota_only_failures():
     live = _text("live.yml")
     assert "quota_exhausted=1" in live and "collect.log" in live
+
+
+def _step_block(text: str, marker: str) -> str:
+    """The workflow step (from its `- name:` / `- run:` line to the next step) containing `marker`."""
+    for block in re.split(r"(?m)^      - (?=\S)", text):
+        if marker in block:
+            return block
+    raise AssertionError(marker)
+
+
+def test_live_collect_step_keeps_python_exit_code():
+    # `run:` without `shell:` is `bash -e`: a pipe to tee would hide python's exit code
+    block = _step_block(_text("live.yml"), "--only live")
+    assert re.search(r"^\s+shell:\s*bash\s*$", block, re.M) or "set -o pipefail" in block
+
+
+def test_every_piped_python_step_has_pipefail():
+    for name in ("live.yml", "daily.yml"):
+        for block in re.split(r"(?m)^      - (?=\S)", _text(name)):
+            if re.search(r"python -m ytops [^\n]*\|", block):
+                assert re.search(r"^\s+shell:\s*bash\s*$", block, re.M) or "set -o pipefail" in block, name
