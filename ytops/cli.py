@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import argparse
+import json
+from datetime import date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
-from ytops import runner, store
+from ytops import registry, render, runner, store
 from ytops.registry import KEYS, resolve_key
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "db" / "schema.sql"
@@ -43,6 +46,18 @@ def _status() -> int:
     return 0
 
 
+def _render(args) -> int:
+    today = date.fromisoformat(args.today) if args.today else datetime.now(ZoneInfo("Asia/Seoul")).date()
+    config = {"channels": registry.load_channels(), "thresholds": registry.load_thresholds()}
+    data = render.build(store.connect(), today=today, config=config)
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=1, default=render._json_default)
+    print(f"wrote {out} latest_day={data['latest_day']} lag_days={data['lag_days']}")
+    return 0
+
+
 def _schema(args) -> int:
     if not args.apply:
         print(f"{SCHEMA_PATH} (use --apply to run it)")
@@ -65,6 +80,9 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--days", type=int, default=90)
     b.add_argument("--dry-run", action="store_true")
     sub.add_parser("status")
+    r = sub.add_parser("render")
+    r.add_argument("--out", required=True)
+    r.add_argument("--today", help="YYYY-MM-DD (default: today in Asia/Seoul)")
     s = sub.add_parser("schema")
     s.add_argument("--apply", action="store_true")
     args = parser.parse_args(argv)
@@ -74,4 +92,6 @@ def main(argv: list[str] | None = None) -> int:
         return _collect(args, days=args.days, video_days=28)
     if args.cmd == "status":
         return _status()
+    if args.cmd == "render":
+        return _render(args)
     return _schema(args)

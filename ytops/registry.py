@@ -63,3 +63,13 @@ def load_channels(config_path: Path | None = None) -> dict[str, Channel]:
         )
         for key, row in cfg["channels"].items()
     }
+
+
+def load_thresholds(config_path: Path | None = None) -> dict:
+    with (config_path or DEFAULT_CONFIG).open("rb") as f:
+        t = tomllib.load(f).get("thresholds", {})
+    return {
+        "up_pct": float(t.get("up_pct", 5.0)),
+        "down_pct": float(t.get("down_pct", -5.0)),
+        "shortage_days": int(t.get("shortage_days", 3)),
+    }

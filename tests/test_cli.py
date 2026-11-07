@@ -32,3 +32,11 @@ def test_cli_requires_target(monkeypatch):
     _capture(monkeypatch)
     with pytest.raises(SystemExit):
         cli.main(["collect"])
+
+
+def test_cli_render_writes_json(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli.store, "connect", lambda: "conn")
+    monkeypatch.setattr(cli.render, "build", lambda conn, *, today, config: {"latest_day": today, "lag_days": 3, "k": "한글"})
+    out = tmp_path / "sub" / "data.json"
+    assert cli.main(["render", "--out", str(out), "--today", "2026-11-07"]) == 0
+    assert '"latest_day": "2026-11-07"' in out.read_text(encoding="utf-8") and "한글" in out.read_text(encoding="utf-8")
