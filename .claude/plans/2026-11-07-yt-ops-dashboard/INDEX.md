@@ -14,15 +14,23 @@ Status: active
 - [x] Task 7 암호화 · 정적 페이지
 - [x] Task 8 워크플로 · 문서
 - [x] Task 9 요청 시 CLI
+- [x] 최종 전체 리뷰(opus) + 수정 회차 1회 — 101 테스트 통과
 - [ ] Task 10 통합 검증 (형아 Phase 0 뒤)
 
 ## Resume Point
 
-- 파일: `plan.md` (작업 단위) · 설계 정본 `/Users/zion/.claude/plans/resilient-shimmying-lark.md`
-- 단계: Task 1 시작 전. SDD 레저는 `.superpowers/sdd/<plan>/progress.md`.
-- 남은 것: Task 1~9 서브에이전트 실행 → Task 10 은 형아 Phase 0(Reporting API · 금고 재백업 · 저장소+Secrets · 스키마 승인) 뒤.
+- 파일: `plan.md`(Task 10 절) · `docs/runbook.md`(형아 Phase 0 체크리스트 ①)
+- 단계: 코드 완성, 로컬 `main` 에 커밋됨. **원격 저장소 없음.** 형아 Phase 0 대기:
+  1. GCP 543780518761 에서 YouTube Reporting API 켜기 → 꼬비가 `reportTypes.list` 로 reach 보고서 실존 확인(2차 CTR 범위 확정)
+  2. `~/kkobi/yt-channels-vault/scripts/backup.sh` 재실행(analytics.json 포함) + push
+  3. GitHub 공개 저장소 `zionge2k/yt-ops` 생성 · Secrets 4개 · Pages Source=Actions → `git remote add origin … && git push -u origin main`
+  4. `.env` 에 `SUPABASE_DB_URL` 넣고 `python -m ytops schema --apply` 승인
+- 그 다음(Task 10, 꼬비): `backfill --days 180 --all` → `collect --all` 2회 멱등 → `render` 대조(11/03 PDF 값) → Actions dispatch(backfill_days=180) → Pages 확인 → 숨비 폰 확인 → INDEX 완료 처리.
+- 규칙 기록: `rulings.md`(실행 중 내린 판단 전부). 보류한 minor 도 거기.
 
 ## Files
 
 - `plan.md` — 작업 단위 계획
+- `rulings.md` — SDD 레저에서 옮긴 판단·보류 목록
 - `/Users/zion/.claude/plans/resilient-shimmying-lark.md` — 승인된 설계
+- `docs/runbook.md` · `ai-learnings.md`
