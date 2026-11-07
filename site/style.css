@@ -1,0 +1,57 @@
+:root {
+  --bg: #f6f7f9; --card: #ffffff; --text: #1b1f24; --muted: #5b6570; --line: #d9dee4;
+  --accent: #1f6feb; --bar: #1f6feb; --bar-bg: #e3e7ec; --live: #d9480f; --vod: #7b8794;
+  --warn-bg: #fff3cd; --warn-text: #5c4300; --bad: #c62828; --good: #1b7f3b;
+  --topbar: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171a; --card: #1e2227; --text: #e8ebee; --muted: #9aa5b1; --line: #343b43;
+    --accent: #6ea8fe; --bar: #6ea8fe; --bar-bg: #343b43; --live: #ff8a5c; --vod: #8a96a3;
+    --warn-bg: #4a3b00; --warn-text: #ffe69c; --bad: #ff7b72; --good: #5fd283;
+    --topbar: #1e2227;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font-size: 18px; line-height: 1.5;
+  font-family: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; }
+.topbar { position: sticky; top: 0; z-index: 5; background: var(--topbar); border-bottom: 1px solid var(--line); padding: 8px 16px; }
+.topbar .legend { color: var(--muted); font-size: 18px; }
+.sample-band { background: var(--warn-bg); color: var(--warn-text); padding: 8px 16px; font-weight: 700; text-align: center; }
+main { max-width: 1200px; margin: 0 auto; padding: 8px 16px 48px; }
+h2 { font-size: 24px; margin: 32px 0 12px; }
+.num { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.cards { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 900px) { .cards { grid-template-columns: 1fr 1fr; } }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; }
+.card h3 { font-size: 20px; margin: 0 0 8px; }
+.metric { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 12px; padding: 6px 0; border-top: 1px solid var(--line); }
+.metric .label { grid-column: 1 / -1; color: var(--muted); }
+.delta { font-size: 18px; }
+.up { color: var(--good); } .down { color: var(--bad); }
+svg.spark { width: 120px; height: 32px; display: block; }
+svg.spark path { fill: none; stroke: var(--accent); stroke-width: 2; }
+svg.spark circle { fill: var(--accent); }
+.toggle { display: inline-flex; gap: 8px; margin-left: 8px; }
+.toggle button, .pwform button { font: inherit; padding: 6px 16px; min-height: 44px; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 8px; cursor: pointer; }
+.toggle button[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 700; }
+.seg { display: flex; height: 20px; border-radius: 4px; overflow: hidden; background: var(--bar-bg); margin: 4px 0; }
+.seg .live { background: var(--live); } .seg .vod { background: var(--vod); }
+.note { color: var(--muted); font-size: 18px; margin-top: 8px; }
+.tablewrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 18px; }
+th, td { padding: 8px 12px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; }
+td.c, th.c { text-align: center; }
+.short { color: var(--bad); font-weight: 700; } .ok { color: var(--good); }
+h3.sub { font-size: 20px; margin: 20px 0 8px; }
+.prog { margin: 6px 0; height: 16px; background: var(--bar-bg); border-radius: 8px; overflow: hidden; }
+.prog > div { height: 100%; background: var(--bar); }
+.mrow { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; }
+.errors { margin-top: 32px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+.errors ul { margin: 0; padding-left: 20px; }
+.pwform { min-height: 70vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 16px; }
+.pwform input { font: inherit; font-size: 24px; padding: 12px 16px; width: min(420px, 100%); border: 2px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); }
+.pwform button { font-size: 24px; padding: 12px 32px; width: min(420px, 100%); background: var(--accent); color: #fff; border-color: var(--accent); }
+.pwerr { color: var(--bad); font-weight: 700; min-height: 1.5em; }

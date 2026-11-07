@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from ytops import registry, render, runner, store
+from ytops import crypt, registry, render, runner, store
 from ytops.registry import KEYS, resolve_key
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "db" / "schema.sql"
@@ -58,6 +59,18 @@ def _render(args) -> int:
     return 0
 
 
+def _encrypt(args) -> int:
+    password = os.environ.get("DASH_PASSWORD")
+    if not password:
+        print("DASH_PASSWORD 환경변수가 없어요. 비밀번호는 환경변수로만 받아요.")
+        return 2
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(crypt.encrypt(Path(args.inp).read_bytes(), password))
+    print(f"wrote {out}")
+    return 0
+
+
 def _schema(args) -> int:
     if not args.apply:
         print(f"{SCHEMA_PATH} (use --apply to run it)")
@@ -83,6 +96,9 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("render")
     r.add_argument("--out", required=True)
     r.add_argument("--today", help="YYYY-MM-DD (default: today in Asia/Seoul)")
+    e = sub.add_parser("encrypt")
+    e.add_argument("inp", metavar="IN")
+    e.add_argument("out", metavar="OUT")
     s = sub.add_parser("schema")
     s.add_argument("--apply", action="store_true")
     args = parser.parse_args(argv)
@@ -94,4 +110,6 @@ def main(argv: list[str] | None = None) -> int:
         return _status()
     if args.cmd == "render":
         return _render(args)
+    if args.cmd == "encrypt":
+        return _encrypt(args)
     return _schema(args)
