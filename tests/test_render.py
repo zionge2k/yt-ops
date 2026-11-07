@@ -385,6 +385,26 @@ def test_live_only_run_does_not_clear_daily_failure(monkeypatch):
     assert [e["stage"] for e in d["errors"]] == ["channel_daily", "live"]  # channel order: soombi, backthen
 
 
+def test_live_only_run_does_not_clear_daily_side_errors(monkeypatch):
+    t1, t2 = datetime(2026, 11, 7, 0, 30, tzinfo=UTC), datetime(2026, 11, 7, 2, 0, tzinfo=UTC)
+    log = [
+        {"run_id": "live", "started_at": t2, "channels": list(render.ORDER), "collectors": ["live"], "errors": []},
+        {"run_id": "daily", "started_at": t1, "channels": list(render.ORDER),
+         "collectors": ["channel_daily", "subs", "playlists", "audience", "live"],
+         "errors": [{"channel": "soombi", "stage": s, "error": "E", "message": "m"}
+                    for s in ("playlists", "audience", "store:yt_playlist_item")]},
+    ]
+    d = _build(monkeypatch, yt_run_log=log)
+    soombi = next(c for c in d["channels"] if c["key"] == "soombi")
+    assert [e["stage"] for e in soombi["errors"]] == ["playlists", "audience", "store:yt_playlist_item"]
+    assert soombi["collect_failed"] is False
+    # a later run that ran playlists without error clears only that stage (and its store)
+    log.insert(0, {"run_id": "pl", "started_at": t2 + timedelta(hours=1), "channels": list(render.ORDER),
+                   "collectors": ["playlists"], "errors": []})
+    soombi = next(c for c in _build(monkeypatch, yt_run_log=log)["channels"] if c["key"] == "soombi")
+    assert [e["stage"] for e in soombi["errors"]] == ["audience"]
+
+
 def test_daily_failure_is_cleared_by_a_later_daily_run(monkeypatch):
     t1, t2 = datetime(2026, 11, 6, 0, 30, tzinfo=UTC), datetime(2026, 11, 7, 0, 30, tzinfo=UTC)
     log = [

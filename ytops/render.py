@@ -84,10 +84,23 @@ def _failed(stage) -> bool:
     return (stage or "") in FAILED_STAGES
 
 
-# Which collectors own a failure stage: only a run that ran one of them can say the stage recovered.
-_BOTH = ("channel_daily", "subs")
-STAGE_OWNERS = {"client": _BOTH, "channel_daily": ("channel_daily",), "subs": ("subs",),
-                "store:yt_channel_daily": _BOTH, "store:yt_subs_snapshot": _BOTH}
+# Which collector owns a failure stage: only a run that ran it can say the stage recovered.
+# A stage is a collector name, `store:<table>` (the collector writing that table) or `client`
+# (any run builds the clients).
+TABLE_OWNERS = {
+    "yt_playlist": "playlists", "yt_playlist_item": "playlists", "yt_audience": "audience",
+    "yt_video": "video", "yt_video_daily": "video_daily", "yt_schedule": "schedule",
+    "yt_live_snapshot": "live", "yt_channel_daily": "channel_daily", "yt_yearly_minutes": "channel_daily",
+    "yt_subs_snapshot": "subs",
+}
+
+
+def _stage_owner(stage) -> str | None:
+    """Collector that owns a failure stage; None when any run can speak for it."""
+    stage = stage or ""
+    if stage.startswith("store:"):
+        return TABLE_OWNERS.get(stage[len("store:"):])
+    return None if stage == "client" else stage
 
 
 def _covers(run, key) -> bool:
@@ -105,31 +118,21 @@ def _ran_any(run, owners) -> bool:
 def _channel_errors(runs, key) -> list[dict]:
     """Errors shown for one channel (runs: newest first).
 
-    Failure stages of the card's core numbers come from the newest run that ran their owning
-    collector, so a later live-only run cannot clear a daily failure. Everything else comes from
-    the newest covering run and the newest covering live-only run (display only).
+    Each failure stage is read from the newest covering run that ran the collector owning that
+    stage, so a later live-only run cannot clear a daily failure (nor a daily run a live one).
     """
-    picked: dict[tuple[int, int], dict] = {}
-
-    def take(i, run, wanted):
-        for j, e in enumerate(run.get("errors") or []):
-            if e.get("channel") == key and wanted(e.get("stage")):
-                picked[(i, j)] = {**e, "run_started_at": run.get("started_at")}
-
-    covering = [(i, r) for i, r in enumerate(runs) if _covers(r, key)]
-    for stage, owners in STAGE_OWNERS.items():
-        for i, r in covering:
-            if _ran_any(r, owners):
-                take(i, r, lambda s, stage=stage: s == stage)
+    covering = [r for r in runs if _covers(r, key)]
+    stages = {e.get("stage") for r in covering for e in (r.get("errors") or []) if e.get("channel") == key}
+    picked: list[tuple[int, int, dict]] = []
+    for stage in stages:
+        owner = _stage_owner(stage)
+        for i, r in enumerate(covering):
+            if owner is None or _ran_any(r, (owner,)):
+                picked += [(i, j, {**e, "run_started_at": r.get("started_at")})
+                           for j, e in enumerate(r.get("errors") or [])
+                           if e.get("channel") == key and e.get("stage") == stage]
                 break
-    if covering:
-        i, r = covering[0]
-        take(i, r, lambda s: not _failed(s))
-    for i, r in covering:
-        if r.get("collectors") == ["live"]:
-            take(i, r, lambda s: True)
-            break
-    return [picked[k] for k in sorted(picked)]
+    return [e for _, _, e in sorted(picked, key=lambda t: t[:2])]
 
 
 def _last_daily_ok_at(runs):
