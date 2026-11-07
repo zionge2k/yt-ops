@@ -17,6 +17,10 @@ class CallBudgetExceeded(RuntimeError):
     """Raised when one client has made more Data API calls than a sane run needs."""
 
 
+class PagingAborted(RuntimeError):
+    """Raised when a paged list still had a next token after MAX_PAGES pages (partial result)."""
+
+
 class DataClient:
     def __init__(self, service, sleep: Callable[[float], None] = time.sleep,
                  call_budget: int = CALL_BUDGET):
@@ -85,7 +89,9 @@ class DataClient:
 
         Stops on a missing token, a token already seen (the API can hand the same
         nextPageToken back forever), an empty page (the 2026-11-07 playlist answered
-        page 2 with no items but still a token), MAX_PAGES, or max_items.
+        page 2 with no items but still a token), max_items.
+        Reaching MAX_PAGES with a token still present raises PagingAborted: a partial list
+        must never look complete (replace tables would wipe good rows).
         """
         items: list[dict] = []
         token = None
@@ -99,7 +105,7 @@ class DataClient:
                     or (max_items is not None and len(items) >= max_items)):
                 return items
             seen_tokens.add(token)
-        return items
+        raise PagingAborted(f"paging stopped after {MAX_PAGES} pages with a next page token left")
 
     def playlists(self) -> list[dict]:
         """Every playlist of the channel (snippet + contentDetails)."""

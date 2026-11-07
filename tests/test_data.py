@@ -152,11 +152,13 @@ def test_pages_stop_on_empty_page_even_with_new_token():
     assert len(got) == 2
 
 
-def test_pages_cap_at_max_pages():
+def test_pages_raise_at_max_pages():
+    import pytest
     from ytops import data
     pages = [_pl(i * 50, 50, f"t{i}") for i in range(data.MAX_PAGES + 10)]
     svc = FakeService(playlistItems__list=pages)
-    client(svc).playlist_items("pl1")
+    with pytest.raises(data.PagingAborted):
+        client(svc).playlist_items("pl1")
     assert len(svc.kwargs("playlistItems.list")) == data.MAX_PAGES
 
 
