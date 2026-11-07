@@ -5,8 +5,8 @@ Status: active
 
 ## Progress
 
-- [ ] Task 1 뼈대 · 레지스트리 · 인증 경로
-- [ ] Task 2 Analytics · Data 클라이언트
+- [x] Task 1 뼈대 · 레지스트리 · 인증 경로
+- [x] Task 2 Analytics · Data 클라이언트
 - [ ] Task 3 수집기 ① 채널 일별 · 구독자
 - [ ] Task 4 수집기 ② 영상 · 예약 · 라이브
 - [ ] Task 5 스키마 · 저장소 · CLI
