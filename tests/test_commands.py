@@ -83,7 +83,7 @@ def test_live_error_per_channel_continues(monkeypatch, capsys):
     cli.main(["live", "--channel", "all"])
     out = capsys.readouterr().out
     assert "⚪ " in out and "RuntimeError" in out and "secret" not in out
-    assert out.count("none") == 7
+    assert out.count("방송 없음") == 7
 
 
 def test_shorts_ratios(monkeypatch, capsys):

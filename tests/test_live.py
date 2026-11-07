@@ -33,15 +33,14 @@ def ctx(data):
     return CollectContext("soombi", CH, None, data, TODAY, NOW)
 
 
-def test_live_none_row_when_no_broadcast():
+def test_non_live_channel_writes_no_row():
     data = FakeData([])
-    rows = live.collect(ctx(data), TODAY, TODAY)["yt_live_snapshot"]
-    assert rows == [{
-        "channel_key": "soombi", "taken_at": NOW, "broadcast_id": "none", "life_cycle": "none",
-        "concurrent": None, "health": None, "stream_status": None, "actual_start": None,
-        "title": None, "views": None,
-    }]
+    assert live.collect(ctx(data), TODAY, TODAY) == {}
     assert data.calls == []
+
+
+def test_no_broadcast_writes_no_row():
+    assert live.collect(ctx(FakeData([])), TODAY, TODAY) == {}
 
 
 def _video(live_details, stats=None):
@@ -79,18 +78,12 @@ def test_live_skips_api_when_not_live_channel():
     off = Channel("urachacha", "urachacha", "UC2", False, 0, 0, "morrow")
     data = FakeData(http_error(500))
     c = CollectContext("urachacha", off, None, data, TODAY, NOW)
-    row = live.collect(c, TODAY, TODAY)["yt_live_snapshot"][0]
-    assert (row["channel_key"], row["broadcast_id"], row["life_cycle"]) == ("urachacha", "none", "none")
+    assert live.collect(c, TODAY, TODAY) == {}
     assert data.calls == []
 
 
-def test_live_403_yields_none_row():
-    rows = live.collect(ctx(FakeData(http_error(403, "liveStreamingNotEnabled"))), TODAY, TODAY)["yt_live_snapshot"]
-    assert rows == [{
-        "channel_key": "soombi", "taken_at": NOW, "broadcast_id": "none", "life_cycle": "none",
-        "concurrent": None, "health": None, "stream_status": None, "actual_start": None,
-        "title": None, "views": None,
-    }]
+def test_live_403_not_enabled_writes_no_row():
+    assert live.collect(ctx(FakeData(http_error(403, "liveStreamingNotEnabled"))), TODAY, TODAY) == {}
 
 
 def test_live_other_http_error_propagates():

@@ -172,22 +172,35 @@ def _h48(by_day, latest, up, down, comparable) -> dict:
             "status": periods.color_of(pct, up, down), "days": cur_days}
 
 
-LIVE_STALE_AFTER = timedelta(hours=1)
+# Live runs are every 2 hours and write a row only while a broadcast is live; 3 hours is that
+# cadence plus slack for a late scheduled run.
+LIVE_STALE_AFTER = timedelta(hours=3)
 
 
-def _live_state(rows, now) -> dict | None:
-    """State of the channel's newest snapshot: active broadcasts only (none rows mean off).
+def _live_collecting(runs, key, now) -> bool:
+    """True when the newest run that ran `live` for this channel is recent and had no error for it."""
+    for r in runs:
+        if _covers(r, key) and _ran_any(r, ("live",)):
+            started = r.get("started_at")
+            bad = any(e.get("channel") == key and e.get("stage") in ("live", "client", "store:yt_live_snapshot")
+                      for e in (r.get("errors") or []))
+            return started is not None and now - started <= LIVE_STALE_AFTER and not bad
+    return False
 
-    No snapshot, or one older than LIVE_STALE_AFTER (live collection stopped), means the state
-    is unknown (on=None) rather than a stale "on air".
+
+def _live_state(rows, now, collecting=False) -> dict | None:
+    """State from the channel's newest snapshot; only active broadcasts leave rows.
+
+    A snapshot older than LIVE_STALE_AFTER (or none at all) means off-air when live runs are
+    healthy (`collecting`), otherwise the state is unknown (on=None) rather than a stale "on air".
     """
     unknown = {"on": None, "dual": False, "count": 0, "viewers": None, "views": None,
                "title": None, "taken_at": None, "stale": False}
-    if not rows:
-        return unknown
-    taken_at = max(r["taken_at"] for r in rows)
-    if now - taken_at > LIVE_STALE_AFTER:
-        return {**unknown, "taken_at": taken_at, "stale": True}
+    taken_at = max((r["taken_at"] for r in rows), default=None)
+    if taken_at is None or now - taken_at > LIVE_STALE_AFTER:
+        if collecting:
+            return {**unknown, "on": False, "taken_at": taken_at}
+        return {**unknown, "taken_at": taken_at, "stale": taken_at is not None}
     active = [r for r in rows if r["taken_at"] == taken_at
               and r.get("broadcast_id") != "none" and r.get("life_cycle") == "live"]
     return {
@@ -348,7 +361,9 @@ def build(conn, *, today: date, config, now: datetime | None = None) -> dict:
     ch_latest = {k: max(rows, default=None) for k, rows in by_ch.items()}
 
     subs = _latest_per_channel(fetch(conn, "select * from yt_subs_snapshot"), "taken_on")
-    live_rows = fetch(conn, "select * from yt_live_snapshot")
+    # only each channel's newest snapshot: the table grows with every live run
+    live_rows = fetch(conn, "select * from yt_live_snapshot where (channel_key, taken_at) in "
+                            "(select channel_key, max(taken_at) from yt_live_snapshot group by 1)")
     yearly = _latest_per_channel(fetch(conn, "select * from yt_yearly_minutes"), "as_of")
     notes: dict[str, dict[str, str | None]] = {}
     for r in fetch(conn, "select * from yt_manual"):
@@ -362,7 +377,8 @@ def build(conn, *, today: date, config, now: datetime | None = None) -> dict:
     videos = {r["video_id"]: r for r in _safe_fetch(conn, "select * from yt_video")}
     playlists = {r["playlist_id"]: r for r in _safe_fetch(conn, "select * from yt_playlist")}
     items = _safe_fetch(conn, "select * from yt_playlist_item")
-    audience_rows = _safe_fetch(conn, "select * from yt_audience")
+    audience_rows = _safe_fetch(conn, "select * from yt_audience where (channel_key, as_of) in "
+                                      "(select channel_key, max(as_of) from yt_audience group by 1)")
 
     out_channels, board, subs_trend, watch_trend, detail = [], {}, {}, {}, {}
     errors: list[dict] = []
@@ -383,7 +399,7 @@ def build(conn, *, today: date, config, now: datetime | None = None) -> dict:
         board[k] = {
             "subscribers": subs_n,
             "h48": _h48(by_day, latest, up, down, comparable),
-            "live": _live_state([r for r in live_rows if r["channel_key"] == k], now) if ch.is_live else None,
+            "live": _live_state([r for r in live_rows if r["channel_key"] == k], now, _live_collecting(runs, k, now)) if ch.is_live else None,
             "health": health_of(monet),
             "monet": monet,
         }

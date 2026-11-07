@@ -49,7 +49,10 @@ def cmd_live(args) -> int:
     for key in _keys(args):
         try:
             ctx = _context(key, channels, data=True)
-            rows += live_collector.collect(ctx, ctx.today, ctx.today)["yt_live_snapshot"]
+            got = live_collector.collect(ctx, ctx.today, ctx.today).get("yt_live_snapshot", [])
+            if not got:
+                print(f"⚫ {channels[key].display}: 방송 없음")
+            rows += got
         except Exception as e:  # one broken channel must not hide the others
             print(f"⚪ {channels[key].display}: {type(e).__name__}")
     shown = [dict(r, channel=channels[r["channel_key"]].display,

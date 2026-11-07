@@ -1,4 +1,4 @@
-"""Live snapshot collector: one row per active broadcast, or a single 'none' row."""
+"""Live snapshot collector: one row per active broadcast; nothing is written while the channel is off-air."""
 from __future__ import annotations
 
 import json
@@ -20,14 +20,6 @@ def _views(video: dict) -> int | None:
     return int(value) if value is not None else None
 
 
-def _none_row(ctx: CollectContext) -> dict[str, list[dict]]:
-    return {"yt_live_snapshot": [{
-        "channel_key": ctx.key, "taken_at": ctx.collected_at, "broadcast_id": "none",
-        "life_cycle": "none", "concurrent": None, "health": None,
-        "stream_status": None, "actual_start": None, "title": None, "views": None,
-    }]}
-
-
 def http_error_reason(e: HttpError) -> str | None:
     """First API error reason (e.g. quotaExceeded), from error_details or the JSON body."""
     details = getattr(e, "error_details", None)
@@ -43,16 +35,16 @@ def http_error_reason(e: HttpError) -> str | None:
 
 def collect(ctx: CollectContext, start: date, end: date) -> dict[str, list[dict]]:
     if not ctx.channel.is_live:
-        return _none_row(ctx)
+        return {}
     try:
         broadcasts = ctx.data.active_broadcasts()
     except HttpError as e:
         # Only "live streaming not enabled" means no live; quota / permission 403s must surface.
         if e.resp.status == 403 and http_error_reason(e) == "liveStreamingNotEnabled":
-            return _none_row(ctx)
+            return {}
         raise
     if not broadcasts:
-        return _none_row(ctx)
+        return {}
     rows = []
     for b in broadcasts:
         broadcast_id = b["id"]

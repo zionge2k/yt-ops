@@ -250,12 +250,12 @@ def test_detail_top_videos_and_genres(monkeypatch):
 
 
 def test_live_state_stale_snapshot_is_unknown(monkeypatch):
-    # newest snapshot of every channel is over an hour old (01:10 vs 00:00): live collection stopped, state unknown
-    rows = [{**r, "taken_at": r["taken_at"] - timedelta(hours=1)} for r in ROWS["yt_live_snapshot"]]
+    # newest snapshot of every channel is over 3 hours old (01:10 vs 21:00): live collection stopped, state unknown
+    rows = [{**r, "taken_at": r["taken_at"] - timedelta(hours=4)} for r in ROWS["yt_live_snapshot"]]
     d = _build(monkeypatch, yt_live_snapshot=rows)["board"]
     assert d["soombi"]["live"]["on"] is None and d["soombi"]["live"]["stale"] is True
     assert d["soombi"]["live"]["count"] == 0 and d["soombi"]["live"]["title"] is None
-    assert d["soombi"]["live"]["taken_at"] == "2026-11-07T00:00:00+00:00"
+    assert d["soombi"]["live"]["taken_at"] == "2026-11-06T21:00:00+00:00"
 
 
 def test_detail_subs_sources(monkeypatch):
@@ -409,3 +409,35 @@ def test_last_daily_ok_at_ignores_live_only_runs(monkeypatch):
     # old rows without `collectors` count as full runs; no daily-capable ok run -> None
     assert _build(monkeypatch, yt_run_log=[{"run_id": "o", "started_at": t_daily, "ok": True}])["last_daily_ok_at"] == t_daily.isoformat()
     assert _build(monkeypatch, yt_run_log=log[:1])["last_daily_ok_at"] is None
+
+
+def test_snapshot_under_three_hours_old_is_still_live(monkeypatch):
+    rows = [{**r, "taken_at": r["taken_at"] - timedelta(hours=1, minutes=50)} for r in ROWS["yt_live_snapshot"]]
+    live = _build(monkeypatch, yt_live_snapshot=rows)["board"]["soombi"]["live"]
+    assert live["on"] is True and live["stale"] is False
+
+
+def test_no_recent_snapshot_with_healthy_live_runs_is_off(monkeypatch):
+    # live runs write no row while off-air: a recent successful live run means "off", not "unknown"
+    log = [{"run_id": "l", "started_at": NOW - timedelta(minutes=30), "channels": list(render.ORDER),
+            "collectors": ["live"], "errors": [], "ok": True}]
+    rows = [r for r in ROWS["yt_live_snapshot"] if r["channel_key"] != "soombi"]
+    d = _build(monkeypatch, yt_live_snapshot=rows, yt_run_log=log)["board"]
+    assert d["soombi"]["live"]["on"] is False and d["soombi"]["live"]["stale"] is False
+    # the same channel with a failing live run stays unknown
+    bad = [{**log[0], "errors": [{"channel": "soombi", "stage": "live", "error": "HttpError"}]}]
+    d = _build(monkeypatch, yt_live_snapshot=rows, yt_run_log=bad)["board"]
+    assert d["soombi"]["live"]["on"] is None
+
+
+def test_live_and_audience_reads_are_bounded(monkeypatch):
+    seen = {}
+
+    def fetch(conn, sql, params=()):
+        seen[_table(sql)] = sql
+        return _fake_fetch(conn, sql, params)
+
+    monkeypatch.setattr(render, "fetch", fetch)
+    render.build(None, today=TODAY, config=_cfg(), now=NOW)
+    assert "max(taken_at)" in seen["yt_live_snapshot"]
+    assert "max(as_of)" in seen["yt_audience"]
