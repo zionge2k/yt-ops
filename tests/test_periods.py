@@ -28,6 +28,25 @@ def test_pct_change_negative_prev():
     assert periods.pct_change(-4, -2) == -100.0
 
 
+def test_half_trend_splits_window():
+    # first half 1+1, second half 2+2 -> +100%
+    assert periods.half_trend([1, 1, 2, 2]) == 100.0
+    # odd length: middle day goes to the second half ([1] vs [1, 1])
+    assert periods.half_trend([1, 1, 1]) == 100.0
+    assert periods.half_trend([2, None, 1, 1]) == 0.0  # None skipped
+    assert periods.half_trend([None, None, 1, 1]) is None
+    assert periods.half_trend([0, 0, 1, 1]) is None  # first half total 0
+    assert periods.half_trend([5]) is None and periods.half_trend([]) is None
+    assert periods.half_trend([4, 4, 2, 2]) == -50.0
+
+
+def test_color_of():
+    assert periods.color_of(5.0, 5.0, -5.0) == "red"
+    assert periods.color_of(0.0, 5.0, -5.0) == "purple"
+    assert periods.color_of(-5.0, 5.0, -5.0) == "blue"
+    assert periods.color_of(None, 5.0, -5.0) == "grey"
+
+
 def test_compare_window_is_at_least_four_weeks():
     w7 = periods.window(date(2026, 11, 4), 7)
     assert periods.compare_window(w7) == (date(2026, 10, 1), date(2026, 10, 28))

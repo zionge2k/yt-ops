@@ -27,6 +27,35 @@ def pct_change(cur: float | None, prev: float | None) -> float | None:
     return round((cur - prev) / abs(prev) * 100, 1)
 
 
+def half_trend(values) -> float | None:
+    """Percent change of the second half of a window over the first half.
+
+    values: daily numbers in date order (None = no data, skipped). The window is split in
+    two (the middle day goes to the second half when the length is odd). None when there
+    are fewer than two values or the first half has no usable total.
+    """
+    vals = list(values)
+    if len(vals) < 2:
+        return None
+    mid = len(vals) // 2
+    first = [v for v in vals[:mid] if v is not None]
+    second = [v for v in vals[mid:] if v is not None]
+    if not first or not second:
+        return None
+    return pct_change(sum(second), sum(first))
+
+
+def color_of(pct: float | None, up: float, down: float) -> str:
+    """Trend color (v3): red = rising, blue = falling, purple = flat, grey = unknown."""
+    if pct is None:
+        return "grey"
+    if pct >= up:
+        return "red"
+    if pct <= down:
+        return "blue"
+    return "purple"
+
+
 def status_of(pct: float | None, up: float, down: float) -> str:
     if pct is None:
         return "grey"

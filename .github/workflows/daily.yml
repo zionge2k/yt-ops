@@ -7,12 +7,13 @@ on:
   workflow_dispatch:
     inputs:
       backfill_days:
-        description: '과거 N일 다시 채우기 (0 이면 평소 수집, 첫 실행은 185)'
+        description: '과거 N일 다시 채우기 (0 이면 평소 수집, 첫 실행은 365 — 구독자 1년 그래프용)'
         type: number
         default: 0
 
+# live.yml 과 같은 group — Pages 배포가 서로 겹치지 않게 차례로 돈다.
 concurrency:
-  group: daily
+  group: pages
   cancel-in-progress: false
 
 permissions:
@@ -60,6 +61,12 @@ jobs:
           cache: pip
 
       - run: pip install -r requirements.txt
+
+      # Schema is idempotent (if not exists / add column if not exists): keeps the DB in step with db/schema.sql.
+      - name: 스키마 맞추기
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python -m ytops schema --apply
 
       # Deploy must happen even if collection reports errors; failure is surfaced in the last step.
       - name: 수집

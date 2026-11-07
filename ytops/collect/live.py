@@ -15,11 +15,16 @@ def _concurrent(video: dict) -> int | None:
     return int(value) if value is not None else None  # absent stays None, never 0
 
 
+def _views(video: dict) -> int | None:
+    value = video.get("statistics", {}).get("viewCount")
+    return int(value) if value is not None else None
+
+
 def _none_row(ctx: CollectContext) -> dict[str, list[dict]]:
     return {"yt_live_snapshot": [{
         "channel_key": ctx.key, "taken_at": ctx.collected_at, "broadcast_id": "none",
         "life_cycle": "none", "concurrent": None, "health": None,
-        "stream_status": None, "actual_start": None, "title": None,
+        "stream_status": None, "actual_start": None, "title": None, "views": None,
     }]}
 
 
@@ -65,5 +70,6 @@ def collect(ctx: CollectContext, start: date, end: date) -> dict[str, list[dict]
             "stream_status": stream.get("streamStatus"),
             "actual_start": parse_ts(details.get("actualStartTime")),
             "title": b.get("snippet", {}).get("title"),
+            "views": _views(videos[0]) if videos else None,
         })
     return {"yt_live_snapshot": rows}

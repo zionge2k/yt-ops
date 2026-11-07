@@ -27,6 +27,16 @@ def test_cli_all_and_backfill_defaults(monkeypatch):
     assert got["kw"]["days"] == 185 and got["kw"]["video_days"] == 28 and got["kw"]["conn"] == "conn"
 
 
+def test_cli_only_passes_collector_names(monkeypatch):
+    got = _capture(monkeypatch)
+    assert cli.main(["collect", "--all", "--only", "live", "--dry-run"]) == 0
+    assert got["kw"]["only"] == ["live"]
+    cli.main(["collect", "--all", "--only", "live, subs", "--dry-run"])
+    assert got["kw"]["only"] == ["live", "subs"]
+    cli.main(["collect", "--all", "--dry-run"])
+    assert got["kw"]["only"] is None
+
+
 def test_cli_requires_target(monkeypatch):
     import pytest
     _capture(monkeypatch)

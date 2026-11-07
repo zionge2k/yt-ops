@@ -42,7 +42,7 @@ def test_uploads_batches_50():
     assert all(kw["playlistId"] == "upl0001" and kw["maxResults"] == 50 for kw in pl)
     vl = svc.kwargs("videos.list")
     assert [len(kw["id"].split(",")) for kw in vl] == [50, 50, 20]
-    assert vl[0]["part"] == "snippet,contentDetails,status,liveStreamingDetails"
+    assert vl[0]["part"] == "snippet,contentDetails,status,liveStreamingDetails,statistics"
 
 
 def test_uploads_max_items_stops_early():
@@ -85,6 +85,27 @@ def test_stream_health():
 
 def _ids(a, b):
     return ",".join(f"vid{i:05d}" for i in range(a, b))
+
+
+def test_playlists_joins_pages():
+    p1 = {"items": [{"id": "pl1", "snippet": {"title": "Waltz"}, "contentDetails": {"itemCount": 2}}],
+          "nextPageToken": "t1"}
+    p2 = {"items": [{"id": "pl2", "snippet": {"title": "Jazz"}, "contentDetails": {"itemCount": 0}}]}
+    svc = FakeService(playlists__list=[p1, p2])
+    got = client(svc).playlists()
+    assert [p["id"] for p in got] == ["pl1", "pl2"]
+    kw = svc.kwargs("playlists.list")
+    assert [k.get("pageToken") for k in kw] == [None, "t1"]
+    assert kw[0]["part"] == "snippet,contentDetails" and kw[0]["mine"] is True and kw[0]["maxResults"] == 50
+
+
+def test_playlist_items_joins_pages():
+    svc = FakeService(playlistItems__list=[_pl(0, 50, "t1"), _pl(50, 3)])
+    got = client(svc).playlist_items("pl1")
+    assert len(got) == 53 and got[-1]["contentDetails"]["videoId"] == "vid00052"
+    kw = svc.kwargs("playlistItems.list")
+    assert all(k["playlistId"] == "pl1" and k["part"] == "contentDetails" for k in kw)
+    assert [k.get("pageToken") for k in kw] == [None, "t1"]
 
 
 def test_uploads_pages_do_not_repeat():

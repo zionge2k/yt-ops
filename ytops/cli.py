@@ -15,6 +15,7 @@ SCHEMA_PATH = Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 TABLES = (
     "yt_channel_daily", "yt_yearly_minutes", "yt_subs_snapshot", "yt_video",
     "yt_video_daily", "yt_schedule", "yt_live_snapshot", "yt_manual", "yt_run_log",
+    "yt_audience", "yt_playlist", "yt_playlist_item",
 )
 
 
@@ -28,9 +29,15 @@ def _keys(args) -> list[str]:
     return list(KEYS) if args.all else [resolve_key(args.channel)]
 
 
+def _only(args) -> list[str] | None:
+    raw = getattr(args, "only", None)
+    return [n.strip() for n in raw.split(",") if n.strip()] if raw else None
+
+
 def _collect(args, *, days: int, video_days: int) -> int:
     conn = None if args.dry_run else store.connect()
-    res = runner.run_collect(_keys(args), days=days, video_days=video_days, dry_run=args.dry_run, conn=conn)
+    res = runner.run_collect(_keys(args), days=days, video_days=video_days, dry_run=args.dry_run, conn=conn,
+                             only=_only(args))
     print(f"run {res.run_id} latest_day={res.latest_day} errors={len(res.errors)} counts={res.counts}")
     for e in res.errors:
         print(f"  ERROR {e['channel']} {e['stage']}: {e['error']}: {e['message']}")
@@ -88,12 +95,15 @@ def main(argv: list[str] | None = None) -> int:
     _targets(c)
     c.add_argument("--days", type=int, default=10)
     c.add_argument("--dry-run", action="store_true")
+    c.add_argument("--only", help="comma-separated collector names (e.g. live)")
     b = sub.add_parser("backfill")
     _targets(b)
     b.add_argument("--days", type=int, default=185,
                    help="channel daily/subs/live/schedule window (default 185: analytics lags ~3 days, so the 90-day "
-                        "comparison needs a full previous window); per-video daily stays 28")
+                        "comparison needs a full previous window; 365 for the subscriber chart — channel daily is "
+                        "collected in 180-day slices); per-video daily stays 28")
     b.add_argument("--dry-run", action="store_true")
+    b.add_argument("--only", help="comma-separated collector names")
     sub.add_parser("status")
     r = sub.add_parser("render")
     r.add_argument("--out", required=True)

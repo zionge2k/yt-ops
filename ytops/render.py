@@ -1,21 +1,22 @@
-"""Render DB rows into the data.json structure the dashboard page reads."""
+"""Render DB rows into the data.json (v3) structure the dashboard page reads."""
 from __future__ import annotations
 
-import math
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from zoneinfo import ZoneInfo
 
 from ytops import periods, store
 
 fetch = store.fetch  # single injectable DB read; tests monkeypatch it
 
-KST = ZoneInfo("Asia/Seoul")
-PERIODS = (7, 28, 90)
-TRUST = {
-    "subscribers": "live", "views": "lagged", "watch_hours": "lagged", "subs_net": "lagged",
-    "shorts": "computed", "hours_approx": "approx", "live_snapshot": "live",
-}
+# Fixed channel order on every screen (also exported as data.json "order").
+ORDER = ("soombi", "backthen", "urachacha", "a2p", "justsoombi", "soombicafe", "groovewav", "pliwav")
+SUBS_WINDOWS = (365, 14)
+WATCH_WINDOWS = (365, 28, 7)
+RECENT_DAYS = 28  # top videos / genres / subscription sources
+SUBS_GOAL, HOURS_GOAL = 1000, 4000
+SEGMENTS = {"subscribed": "subscribers", "unsubscribed": "viewers"}
+PEAK_FIELDS = {"subscribers": "peak_hours", "viewers": "peak_hours_viewers"}
+TOP_N, GENRE_N, COUNTRY_N = 3, 5, 5
 
 
 def _json_default(o):
@@ -36,31 +37,12 @@ def _sum(values):
     return sum(got) if got else None
 
 
-def _kst_date(dt: datetime) -> date:
-    return dt.astimezone(KST).date()
-
-
-def period_summary(rows, win, prev_win, extract, up, down) -> dict:
-    """rows: one channel's daily rows; extract(row) -> number or None."""
-    if win is None:
-        return {"cur": None, "prev": None, "pct": None, "status": "grey", "spark": []}
-    by_day = {r["day"]: r for r in rows}
-
-    def values(w):
-        days = (w[1] - w[0]).days + 1
-        return [extract(by_day[d]) if d in by_day else None
-                for d in (w[0] + timedelta(days=i) for i in range(days))]
-
-    spark = [_num(v) for v in values(win)]
-    cur, prev_total = _sum(spark), _sum(values(prev_win))
-    # prev_win may be longer than win (4-week baseline): scale it to the window length
-    scale = len(spark) / ((prev_win[1] - prev_win[0]).days + 1)
-    prev = None if prev_total is None else round(prev_total * scale, 1)
-    pct = periods.pct_change(cur, prev)
-    return {"cur": cur, "prev": prev, "pct": pct, "status": periods.status_of(pct, up, down), "spark": spark}
+def _round(v, n):
+    return None if v is None else round(v, n)
 
 
 def _hours(r):
+    """Effective watch hours of a daily/yearly row: live + on-demand minutes, shorts excluded."""
     mins = [r.get("min_live"), r.get("min_vod")]
     return None if all(m is None for m in mins) else sum(_num(m) for m in mins if m is not None) / 60
 
@@ -71,47 +53,8 @@ def _subs_net(r):
     return (r.get("subs_gained") or 0) - (r.get("subs_lost") or 0)
 
 
-def _round(v, n):
-    return None if v is None else round(v, n)
-
-
-def shortage(plan_long_per_week: int, plan_shorts_per_day: int, scheduled: list[dict],
-             today: date, days: int = 3) -> dict:
-    window_days = {today + timedelta(days=i) for i in range(days)}
-    have = {"long": 0, "short": 0}
-    for s in scheduled:
-        if s.get("publish_at") and _kst_date(s["publish_at"]) in window_days and s["content_kind"] in have:
-            have[s["content_kind"]] += 1
-
-    def one(need, got):
-        status = "none" if need == 0 else ("ok" if got >= need else "short")
-        return {"need": need, "have": got, "status": status}
-
-    return {
-        "long": one(math.ceil(plan_long_per_week * days / 7), have["long"]),
-        "shorts": one(plan_shorts_per_day * days, have["short"]),
-    }
-
-
-def _schedule(ch, rows, today: date, days: int) -> dict:
-    # `today` is a KST calendar date; "future" means publish_at on/after it
-    future = sorted((r for r in rows if r["publish_at"] and _kst_date(r["publish_at"]) >= today),
-                    key=lambda r: r["publish_at"])
-    longs = [r for r in future if r["content_kind"] == "long"]
-    shorts = [r for r in future if r["content_kind"] == "short"]
-    next7 = []
-    for i in range(7):
-        d = today + timedelta(days=i)
-        day_rows = [r for r in future if _kst_date(r["publish_at"]) == d]
-        next7.append({"date": d, "long": sum(r["content_kind"] == "long" for r in day_rows),
-                      "shorts": sum(r["content_kind"] == "short" for r in day_rows)})
-    return {
-        "long": len(longs), "shorts": len(shorts),
-        "next_long": longs[0]["publish_at"] if longs else None,
-        "next_shorts": shorts[0]["publish_at"] if shorts else None,
-        "next7": next7,
-        "shortage": shortage(ch.plan_long_per_week, ch.plan_shorts_per_day, future, today, days),
-    }
+def _days(start: date, end: date) -> list[date]:
+    return [start + timedelta(days=i) for i in range((end - start).days + 1)]
 
 
 def _latest_per_channel(rows, order_key):
@@ -123,23 +66,12 @@ def _latest_per_channel(rows, order_key):
     return out
 
 
-def _cap(v):
-    return min(v, 100.0)
-
-
-def _no_compare(m: dict) -> None:
-    """Drop the comparison of a period summary (the current window still shows)."""
-    m["prev"], m["pct"], m["status"] = None, None, "grey"
-
-
-def _current_schedule(rows):
-    """Rows from each channel's latest collection only (yt_schedule is upsert-only)."""
-    last: dict[str, object] = {}
-    for r in rows:
-        k, seen = r["channel_key"], r.get("seen_at")
-        if seen is not None and (last.get(k) is None or seen > last[k]):
-            last[k] = seen
-    return [r for r in rows if r.get("seen_at") == last.get(r["channel_key"])]
+def _safe_fetch(conn, sql, params=()):
+    """Read a table added in v3; a missing table (migration not applied yet) yields no rows."""
+    try:
+        return fetch(conn, sql, params)
+    except Exception:  # noqa: BLE001 — render must not stop on one missing table
+        return []
 
 
 FAILED_STAGES = ("client", "channel_daily")
@@ -164,114 +96,260 @@ def _channel_errors(runs, key) -> list[dict]:
     return []
 
 
+def health_of(monet: dict) -> str:
+    """Card color: monetized = red; else min(subs %, hours %) >= 70 red, < 30 blue, between purple."""
+    if monet["monetized"]:
+        return "red"
+    if monet["subs_pct"] is None or monet["hours_pct"] is None:
+        return "grey"
+    score = min(monet["subs_pct"], monet["hours_pct"])
+    return "red" if score >= 70 else "blue" if score < 30 else "purple"
+
+
+def _pct_of(value, goal):
+    return None if value is None else min(round(value / goal * 100, 1), 100.0)
+
+
+def _monet(subs_n, yearly_row, monetized) -> dict:
+    hours = _round(_hours(yearly_row) if yearly_row else None, 1)
+    return {"subs": subs_n, "subs_pct": _pct_of(subs_n, SUBS_GOAL),
+            "hours": hours, "hours_pct": _pct_of(hours, HOURS_GOAL), "monetized": monetized}
+
+
+def _h48(by_day, latest, up, down, comparable) -> dict:
+    if latest is None:
+        return {"cur": None, "prev": None, "pct": None, "status": "grey", "days": []}
+    cur_days = [latest - timedelta(days=1), latest]
+    prev_days = [latest - timedelta(days=3), latest - timedelta(days=2)]
+    cur = _sum(_hours(by_day[d]) for d in cur_days if d in by_day)
+    prev = _sum(_hours(by_day[d]) for d in prev_days if d in by_day)
+    pct = periods.pct_change(cur, prev) if comparable else None
+    return {"cur": _round(cur, 1), "prev": _round(prev, 1) if comparable else None, "pct": pct,
+            "status": periods.color_of(pct, up, down), "days": cur_days}
+
+
+def _live_state(rows) -> dict | None:
+    """State of the channel's newest snapshot: active broadcasts only (none rows mean off)."""
+    if not rows:
+        return {"on": False, "dual": False, "count": 0, "viewers": None, "views": None,
+                "title": None, "taken_at": None}
+    taken_at = max(r["taken_at"] for r in rows)
+    active = [r for r in rows if r["taken_at"] == taken_at
+              and r.get("broadcast_id") != "none" and r.get("life_cycle") == "live"]
+    return {
+        "on": bool(active), "dual": len(active) >= 2, "count": len(active),
+        "viewers": _sum(r.get("concurrent") for r in active),
+        "views": _sum(r.get("views") for r in active),
+        "title": active[0].get("title") if active else None,
+        "taken_at": taken_at,
+    }
+
+
+def _subs_series(by_day, start, end, now, latest) -> list[dict]:
+    """Restored subscriber count per day: now minus the net gained after that day."""
+    running = now
+    totals: dict[date, int | None] = {}
+    d = latest
+    while d >= start:
+        totals[d] = running
+        if running is not None and d in by_day:
+            running -= _subs_net(by_day[d]) or 0
+        d -= timedelta(days=1)
+    return [{"day": d, "total": totals.get(d), "net": _subs_net(by_day[d]) if d in by_day else None}
+            for d in _days(start, end)]
+
+
+def _subs_trend(by_day, latest, first_day, now, up, down) -> dict:
+    out = {}
+    for n in SUBS_WINDOWS:
+        if latest is None:
+            out[str(n)] = {"start": None, "end": None, "total_net": None, "status": "grey", "series": []}
+            continue
+        start = latest - timedelta(days=n - 1)
+        if n == 365 and first_day is not None:
+            start = max(start, first_day)
+        series = _subs_series(by_day, start, latest, now, latest)
+        nets = [s["net"] for s in series]
+        out[str(n)] = {"start": start, "end": latest, "total_net": _sum(nets),
+                       "status": periods.color_of(periods.half_trend(nets), up, down), "series": series}
+    return out
+
+
+def _watch_trend(by_day, latest, first_day, up, down) -> dict:
+    out = {}
+    for n in WATCH_WINDOWS:
+        if latest is None:
+            out[str(n)] = {"start": None, "end": None, "total": None, "status": "grey", "series": []}
+            continue
+        start = latest - timedelta(days=n - 1)
+        if n == 365 and first_day is not None:
+            start = max(start, first_day)
+        hours = [_hours(by_day[d]) if d in by_day else None for d in _days(start, latest)]
+        out[str(n)] = {
+            "start": start, "end": latest, "total": _round(_sum(hours), 1),
+            "status": periods.color_of(periods.half_trend(hours), up, down),
+            "series": [{"day": d, "hours": _round(h, 1)} for d, h in zip(_days(start, latest), hours)],
+        }
+    return out
+
+
+def _segment(rows, peak_note, as_of) -> dict:
+    """One audience segment: age/gender weighted across vod+live, country merged, peak hours note."""
+    weight = {r["content"]: _num(r.get("views")) or 0 for r in rows if r["dim"] == "weight"}
+    by_content: dict[str, dict[str, float]] = {}
+    for r in rows:
+        if r["dim"] == "age_gender":
+            by_content.setdefault(r["content"], {})[r["key"]] = _num(r.get("pct")) or 0.0
+    total_w = sum(weight.get(c, 0) for c in by_content)
+    # contents without a usable weight share the window equally
+    weights = {c: (weight.get(c, 0) if total_w > 0 else 1) for c in by_content}
+    denom = sum(weights.values())
+    age_gender = []
+    if denom > 0:
+        keys = {k for pcts in by_content.values() for k in pcts}
+        for key in keys:
+            pct = sum(by_content[c].get(key, 0.0) * w for c, w in weights.items()) / denom
+            age, gender = key.split("/", 1)
+            age_gender.append({"age": age, "gender": gender, "pct": round(pct, 1)})
+        age_gender.sort(key=lambda a: (-a["pct"], a["age"], a["gender"]))
+    country: dict[str, dict] = {}
+    for r in rows:
+        if r["dim"] == "country":
+            c = country.setdefault(r["key"], {"country": r["key"], "views": 0, "minutes": 0.0})
+            c["views"] += _num(r.get("views")) or 0
+            c["minutes"] += _num(r.get("minutes")) or 0.0
+    top_country = sorted(country.values(), key=lambda c: -c["minutes"])[:COUNTRY_N]
+    return {"age_gender": age_gender, "country": top_country, "peak_hours": peak_note, "as_of": as_of}
+
+
+def _audience(rows, notes) -> dict:
+    as_of = max((r["as_of"] for r in rows), default=None)
+    latest_rows = [r for r in rows if r["as_of"] == as_of]
+    return {name: _segment([r for r in latest_rows if r["segment"] == seg], notes.get(PEAK_FIELDS[name]), as_of)
+            for seg, name in SEGMENTS.items()}
+
+
+def _per_video(vd_rows) -> dict[str, dict]:
+    """Recent minutes / views per video from yt_video_daily rows."""
+    out: dict[str, dict] = {}
+    for r in vd_rows:
+        v = out.setdefault(r["video_id"], {"minutes": 0.0, "views": 0})
+        v["minutes"] += _num(r.get("minutes")) or 0.0
+        v["views"] += r.get("views") or 0
+    return out
+
+
+def _top(per_video, videos, kind) -> list[dict]:
+    rows = [(vid, m) for vid, m in per_video.items()
+            if vid in videos and videos[vid].get("content_kind") == kind]
+    rows.sort(key=lambda x: -x[1]["minutes"])
+    return [{"video_id": vid, "title": videos[vid].get("title"), "thumb": videos[vid].get("thumbnail_url"),
+             "published_at": videos[vid].get("published_at"), "hours": round(m["minutes"] / 60, 1),
+             "views": m["views"]} for vid, m in rows[:TOP_N]]
+
+
+def _genres(per_video, videos, playlists, items) -> list[dict]:
+    """Watch hours per playlist title (shorts excluded; a video counts in every playlist it is in)."""
+    minutes: dict[str, float] = {}
+    for it in items:
+        v = per_video.get(it["video_id"])
+        pl = playlists.get(it["playlist_id"])
+        if v is None or pl is None or videos.get(it["video_id"], {}).get("content_kind") == "short":
+            continue
+        name = pl.get("title") or it["playlist_id"]
+        minutes[name] = minutes.get(name, 0.0) + v["minutes"]
+    total = sum(minutes.values())
+    top = sorted(minutes.items(), key=lambda x: -x[1])[:GENRE_N]
+    return [{"name": name, "hours": round(m / 60, 1), "share": round(m / total * 100, 1) if total else None}
+            for name, m in top]
+
+
+def _subs_sources(rows) -> dict:
+    gained = _sum(r.get("subs_gained") for r in rows)
+    shorts = _sum(r.get("subs_gained_shorts") for r in rows)
+    vod = _sum(r.get("subs_gained_vod") for r in rows)
+    live = _sum(r.get("subs_gained_live") for r in rows)
+    other = None if gained is None else max(0, gained - (shorts or 0) - (vod or 0) - (live or 0))
+    return {"days": RECENT_DAYS, "shorts": shorts, "vod": vod, "live": live, "other": other,
+            "lost": _sum(r.get("subs_lost") for r in rows)}
+
+
 def build(conn, *, today: date, config) -> dict:
     channels, th = config["channels"], config["thresholds"]
     up, down = th["up_pct"], th["down_pct"]
+    keys = [k for k in ORDER if k in channels] + [k for k in channels if k not in ORDER]
+
     daily = fetch(conn, "select * from yt_channel_daily order by day")
     latest = max((r["day"] for r in daily), default=None)
-
-    by_ch: dict[str, list] = {k: [] for k in channels}
+    by_ch: dict[str, dict[date, dict]] = {k: {} for k in keys}
     for r in daily:
-        by_ch.setdefault(r["channel_key"], []).append(r)
-
-    # a channel's comparison is meaningless when its history does not reach back to the
-    # previous window, or when its collection fell behind the global latest day
-    first_day = {k: min((r["day"] for r in rs), default=None) for k, rs in by_ch.items()}
-    ch_latest = {k: max((r["day"] for r in rs), default=None) for k, rs in by_ch.items()}
-
-    wins = {p: periods.window(latest, p) if latest else None for p in PERIODS}
-    out_periods = {}
-    for p, w in wins.items():
-        pw = periods.compare_window(w) if w else None
-        out_periods[str(p)] = {
-            "start": w[0] if w else None, "end": w[1] if w else None,
-            "prev_start": pw[0] if pw else None, "prev_end": pw[1] if pw else None,
-            "channels": {
-                k: {
-                    "views": period_summary(by_ch[k], w, pw, lambda r: r["views"], up, down),
-                    "subs_net": period_summary(by_ch[k], w, pw, _subs_net, up, down),
-                    "watch_hours": period_summary(by_ch[k], w, pw, _hours, up, down),
-                }
-                for k in channels
-            },
-        }
-        for k, m in out_periods[str(p)]["channels"].items():
-            if pw and (first_day[k] is None or first_day[k] > pw[0] or ch_latest[k] < latest):
-                for summary in m.values():
-                    _no_compare(summary)
-            wh = m["watch_hours"]
-            wh["cur"], wh["prev"] = _round(wh["cur"], 1), _round(wh["prev"], 1)
-            wh["spark"] = [_round(v, 1) for v in wh["spark"]]
-
-    w7 = wins[7]
-
-    def in7(k):
-        return [r for r in by_ch[k] if w7 and w7[0] <= r["day"] <= w7[1]]
+        by_ch.setdefault(r["channel_key"], {})[r["day"]] = r
+    first_day = {k: min(rows, default=None) for k, rows in by_ch.items()}
+    ch_latest = {k: max(rows, default=None) for k, rows in by_ch.items()}
 
     subs = _latest_per_channel(fetch(conn, "select * from yt_subs_snapshot"), "taken_on")
-    snaps = _latest_per_channel(fetch(conn, "select * from yt_live_snapshot"), "taken_at")
+    live_rows = fetch(conn, "select * from yt_live_snapshot")
     yearly = _latest_per_channel(fetch(conn, "select * from yt_yearly_minutes"), "as_of")
-    manual = {r["channel_key"]: r for r in fetch(conn, "select * from yt_manual")
-              if r["field"] == "official_watch_hours_365"}
-    sched_rows = _current_schedule(fetch(conn, "select * from yt_schedule"))
+    notes: dict[str, dict[str, str | None]] = {}
+    for r in fetch(conn, "select * from yt_manual"):
+        if r["field"] in PEAK_FIELDS.values():
+            notes.setdefault(r["channel_key"], {})[r["field"]] = r.get("note")
     runs = fetch(conn, "select * from yt_run_log order by started_at desc limit 50")
-    errors: list[dict] = []
 
-    out_channels, live, schedule, monet, shorts = [], {}, {}, {}, {}
-    for k, ch in channels.items():
-        s = subs.get(k)
-        sub = {"api": s["api_subscribers"], "exact": s["exact_subscribers"]} if s else None
+    recent_start = latest - timedelta(days=RECENT_DAYS - 1) if latest else None
+    vd_rows = _safe_fetch(conn, "select * from yt_video_daily where day >= %s and day <= %s",
+                          (recent_start, latest)) if latest else []
+    videos = {r["video_id"]: r for r in _safe_fetch(conn, "select * from yt_video")}
+    playlists = {r["playlist_id"]: r for r in _safe_fetch(conn, "select * from yt_playlist")}
+    items = _safe_fetch(conn, "select * from yt_playlist_item")
+    audience_rows = _safe_fetch(conn, "select * from yt_audience")
+
+    out_channels, board, subs_trend, watch_trend, detail = [], {}, {}, {}, {}
+    errors: list[dict] = []
+    for k in keys:
+        ch = channels[k]
         ch_errors = _channel_errors(runs, k)
         errors += ch_errors
+        failed = any(_failed(e.get("stage")) for e in ch_errors)
         out_channels.append({"key": k, "display": ch.display, "is_live": ch.is_live,
-                             "subscribers": sub, "errors": ch_errors,
-                             "collect_failed": any(_failed(e.get("stage")) for e in ch_errors)})
-        rows7 = in7(k)
-        if ch.is_live:
-            sn = snaps.get(k)
-            lv, od = _sum(r["min_lol_live"] for r in rows7), _sum(r["min_lol_ondemand"] for r in rows7)
-            live[k] = {
-                # no rows in the window -> unknown (None), not "no live" (0)
-                "days_with_live": sum(1 for r in rows7 if (_num(r["min_lol_live"]) or 0) > 0) if rows7 else None,
-                "hours_live": None if lv is None else _round(lv / 60, 1),
-                "hours_ondemand": None if od is None else _round(od / 60, 1),
-                "last_snapshot": None if sn is None else {
-                    "taken_at": sn["taken_at"], "life_cycle": sn["life_cycle"], "concurrent": sn["concurrent"],
-                    "health": sn["health"], "stream_status": sn["stream_status"], "title": sn["title"]},
-            }
-        schedule[k] = _schedule(ch, [r for r in sched_rows if r["channel_key"] == k], today,
-                                th["shortage_days"])
-        subs_n = (sub["exact"] if sub and sub["exact"] is not None else sub["api"] if sub else None)
-        y = yearly.get(k)
-        hours = _round(_hours(y) if y else None, 1)
-        man = manual.get(k)
-        monet[k] = {
-            "subs_exact": subs_n,
-            "subs_pct": None if subs_n is None else _cap(round(subs_n / 1000 * 100, 1)),
-            "hours_approx": hours,
-            "hours_pct": None if hours is None else _cap(round(hours / 4000 * 100, 1)),
-            "official": None if man is None or man["value"] is None
-            else {"value": _num(man["value"]), "as_of": man["as_of"]},
+                             "collect_failed": failed, "errors": ch_errors})
+        by_day = by_ch[k]
+        s = subs.get(k)
+        subs_n = None if s is None else (s["exact_subscribers"] if s["exact_subscribers"] is not None
+                                         else s["api_subscribers"])
+        monet = _monet(subs_n, yearly.get(k), bool(s and s.get("monetized")))
+        # a channel behind the global latest day (or whose collection failed) gets no comparison
+        comparable = not failed and ch_latest[k] is not None and ch_latest[k] >= (latest or ch_latest[k])
+        board[k] = {
+            "subscribers": subs_n,
+            "h48": _h48(by_day, latest, up, down, comparable),
+            "live": _live_state([r for r in live_rows if r["channel_key"] == k]) if ch.is_live else None,
+            "health": health_of(monet),
+            "monet": monet,
         }
-        v = _sum(r["views_shorts"] for r in rows7)
-        e = _sum(r["engaged_views_shorts"] for r in rows7)
-        g = _sum(r["subs_gained_shorts"] for r in rows7)
-        shorts[k] = {
-            "views": v,
-            "engaged_ratio": round(e / v, 3) if v and e is not None else None,
-            "subs_per_1k": round(g / v * 1000, 1) if v and g is not None else None,
+        subs_trend[k] = _subs_trend(by_day, latest, first_day[k], subs_n, up, down)
+        watch_trend[k] = _watch_trend(by_day, latest, first_day[k], up, down)
+        per_video = _per_video([r for r in vd_rows if r["channel_key"] == k])
+        recent_daily = [r for d, r in by_day.items() if recent_start and recent_start <= d <= latest]
+        detail[k] = {
+            "monet": monet,
+            "audience": _audience([r for r in audience_rows if r["channel_key"] == k], notes.get(k, {})),
+            "top_long": _top(per_video, videos, "long"),
+            "top_live": _top(per_video, videos, "live_archive"),
+            "subs_sources": _subs_sources(recent_daily),
+            "genres": _genres(per_video, videos, playlists, [i for i in items if i["channel_key"] == k]),
         }
 
     return {
+        "v": 3,
         "generated_at": datetime.now(timezone.utc),
         "latest_day": latest,
         "lag_days": (today - latest).days if latest else None,
-        "trust": dict(TRUST),
+        "order": list(ORDER),
         "channels": out_channels,
-        "periods": out_periods,
-        "live": live,
-        "schedule": schedule,
-        "monetization": monet,
-        "shorts": shorts,
+        "board": board,
+        "subs_trend": subs_trend,
+        "watch_trend": watch_trend,
+        "detail": detail,
         "errors": errors,
     }

@@ -226,6 +226,62 @@ def test_runner_empty_schedule_still_replaces(monkeypatch):
     assert ("replace", "yt_schedule", "a2p", 0) in calls
 
 
+def test_slices_split_long_windows():
+    s, e = date(2025, 11, 7), date(2026, 11, 6)  # 365 days
+    got = runner.slices(s, e)
+    assert got == [(date(2025, 11, 7), date(2026, 5, 5)), (date(2026, 5, 6), date(2026, 11, 1)),
+                   (date(2026, 11, 2), date(2026, 11, 6))]
+    assert [(hi - lo).days + 1 for lo, hi in got] == [180, 180, 5]
+    assert runner.slices(date(2026, 11, 1), date(2026, 11, 6)) == [(date(2026, 11, 1), date(2026, 11, 6))]
+    assert runner.slices(date(2026, 11, 1), date(2026, 11, 1), size=1) == [(date(2026, 11, 1), date(2026, 11, 1))]
+
+
+def test_backfill_365_collects_channel_daily_in_slices(monkeypatch):
+    calls = []
+
+    def collect(ctx, s, e):
+        calls.append((s, e))
+        return {"yt_channel_daily": [{"channel_key": "a2p", "day": s, "views": 1}],
+                "yt_yearly_minutes": [{"channel_key": "a2p", "as_of": ctx.today}]}
+
+    monkeypatch.setattr(runner, "COLLECTORS", [("channel_daily", SimpleNamespace(collect=collect))])
+    monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
+    monkeypatch.setattr(runner, "data_for_key", lambda k: "x")
+    monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": "A"})
+    res = runner.run_collect(["a2p"], days=365, dry_run=True, today=TODAY)
+    assert calls == [(date(2025, 11, 7), date(2026, 5, 5)), (date(2026, 5, 6), date(2026, 11, 1)),
+                     (date(2026, 11, 2), date(2026, 11, 6))]
+    assert res.counts == {"yt_channel_daily": 3, "yt_yearly_minutes": 1}  # yearly kept once
+
+
+def test_only_limits_collectors(monkeypatch):
+    ran = []
+    mods = [(n, SimpleNamespace(collect=lambda ctx, s, e, n=n: ran.append(n) or {})) for n in ("channel_daily", "live")]
+    monkeypatch.setattr(runner, "COLLECTORS", mods)
+    monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
+    monkeypatch.setattr(runner, "data_for_key", lambda k: "x")
+    monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": "A"})
+    runner.run_collect(["a2p"], dry_run=True, today=TODAY, only=["live"])
+    assert ran == ["live"]
+    import pytest
+    with pytest.raises(ValueError):
+        runner.run_collect(["a2p"], dry_run=True, today=TODAY, only=["nope"])
+
+
+def test_playlists_are_replaced_per_channel(monkeypatch):
+    monkeypatch.setattr(runner, "COLLECTORS", [("playlists", SimpleNamespace(
+        collect=lambda ctx, s, e: {"yt_playlist": [], "yt_playlist_item": []}))])
+    monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
+    monkeypatch.setattr(runner, "data_for_key", lambda k: "x")
+    monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": "A"})
+    calls = []
+    monkeypatch.setattr(runner.store, "upsert", lambda conn, t, rows, pk, keep=(): calls.append(("upsert", t)) or len(rows))
+    monkeypatch.setattr(runner.store, "replace_channel",
+                        lambda conn, t, key, rows, pk: calls.append(("replace", t, key)) or len(rows))
+    runner.run_collect(["a2p"], dry_run=False, conn=object(), today=TODAY)
+    assert ("replace", "yt_playlist", "a2p") in calls and ("replace", "yt_playlist_item", "a2p") in calls
+
+
 def test_run_log_records_channels(monkeypatch):
     _setup(monkeypatch, bad=("soombi",))
     logged = []

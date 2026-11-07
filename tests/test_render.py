@@ -6,104 +6,118 @@ from ytops import registry, render
 
 UTC = timezone.utc
 TODAY = date(2026, 11, 7)
+LATEST = date(2026, 11, 4)
+KEYS = {"v", "generated_at", "latest_day", "lag_days", "order", "channels", "board",
+        "subs_trend", "watch_trend", "detail", "errors"}
 
 
-def _sched(day, kind, hour=3):
-    return {"publish_at": datetime(2026, 11, day, hour, tzinfo=UTC), "content_kind": kind}
-
-
-def test_period_summary_with_no_days():
-    s = render.period_summary([], None, None, lambda r: r["views"], 5.0, -5.0)
-    assert s == {"cur": None, "prev": None, "pct": None, "status": "grey", "spark": []}
-
-
-def test_shortage_no_plan_no_warning():
-    r = render.shortage(0, 0, [], TODAY)
-    assert r["long"] == {"need": 0, "have": 0, "status": "none"}
-    assert r["shorts"]["status"] == "none"
-
-
-def test_shortage_short_when_under_plan():
-    sched = [_sched(7, "long"), _sched(8, "short"), _sched(20, "short")]
-    r = render.shortage(7, 2, sched, TODAY)
-    assert r["long"] == {"need": 3, "have": 1, "status": "short"}
-    assert r["shorts"] == {"need": 6, "have": 1, "status": "short"}
-    ok = render.shortage(7, 0, [_sched(7, "long")] * 3, TODAY)
-    assert ok["long"]["status"] == "ok"
-
-
-def _day_row(key, day, views=None, **kw):
-    r = {"channel_key": key, "day": day, "views": views, "min_live": None, "min_vod": None,
+def _day_row(key, day, **kw):
+    r = {"channel_key": key, "day": day, "views": None, "min_live": None, "min_vod": None,
          "min_lol_live": None, "min_lol_ondemand": None, "subs_gained": None, "subs_lost": None,
          "views_shorts": None, "engaged_views_shorts": None, "subs_gained_shorts": None,
+         "subs_gained_vod": None, "subs_gained_live": None,
          "min_shorts": None, "min_unspec": None, "collected_at": None}
     r.update(kw)
     return r
 
 
+def _daily():
+    # soombi: 10 days to LATEST, 60 min live + 60 min vod a day (2.0 h), except 11-03 (1.0 h)
+    rows = []
+    for i in range(10):
+        d = LATEST - timedelta(days=i)
+        rows.append(_day_row("soombi", d, views=100, min_live=Decimal(60), min_vod=Decimal(60 if d != date(2026, 11, 3) else 0),
+                             min_shorts=Decimal(500), subs_gained=5, subs_lost=1, subs_gained_shorts=3,
+                             subs_gained_vod=1, subs_gained_live=0))
+    rows.append(_day_row("soombi", date(2026, 10, 1), views=7, subs_gained=2, subs_lost=0))
+    # a2p: behind the global latest day by one day
+    rows.append(_day_row("a2p", date(2026, 11, 3), views=10, min_vod=Decimal(120)))
+    return sorted(rows, key=lambda r: r["day"])
+
+
+def _audience_rows():
+    base = {"channel_key": "soombi", "as_of": date(2026, 11, 6)}
+    old = {"channel_key": "soombi", "as_of": date(2026, 11, 1)}
+
+    def r(segment, content, dim, key, views=None, minutes=None, pct=None, b=base):
+        return {**b, "segment": segment, "content": content, "dim": dim, "key": key,
+                "views": views, "minutes": minutes, "pct": pct}
+
+    return [
+        r("unsubscribed", "vod", "weight", "videoOnDemand", views=300),
+        r("unsubscribed", "live", "weight", "liveStream", views=100),
+        r("unsubscribed", "vod", "age_gender", "age35-44/female", pct=Decimal("40")),
+        r("unsubscribed", "vod", "age_gender", "age45-54/male", pct=Decimal("10")),
+        r("unsubscribed", "live", "age_gender", "age35-44/female", pct=Decimal("80")),
+        r("unsubscribed", "vod", "country", "KR", views=250, minutes=Decimal(900)),
+        r("unsubscribed", "vod", "country", "US", views=50, minutes=Decimal(120)),
+        r("unsubscribed", "live", "country", "KR", views=100, minutes=Decimal(600)),
+        r("unsubscribed", "live", "country", "JP", views=10, minutes=Decimal(10)),
+        # subscribed: vod only, no weight rows -> vod alone
+        r("subscribed", "vod", "age_gender", "age55-64/female", pct=Decimal("70")),
+        # stale as_of must be ignored
+        r("unsubscribed", "vod", "country", "FR", views=9999, minutes=Decimal(99999), b=old),
+    ]
+
+
+ROWS = {
+    "yt_channel_daily": _daily(),
+    "yt_subs_snapshot": [{"channel_key": "soombi", "taken_on": date(2026, 11, 6),
+                          "api_subscribers": 900, "exact_subscribers": 905, "monetized": False},
+                         {"channel_key": "a2p", "taken_on": date(2026, 11, 6),
+                          "api_subscribers": 1200, "exact_subscribers": None, "monetized": True}],
+    "yt_live_snapshot": [
+        {"channel_key": "soombi", "taken_at": datetime(2026, 11, 7, 1, tzinfo=UTC), "broadcast_id": "b1",
+         "life_cycle": "live", "concurrent": 3, "health": "good", "stream_status": "active", "title": "x", "views": 100},
+        {"channel_key": "soombi", "taken_at": datetime(2026, 11, 7, 1, tzinfo=UTC), "broadcast_id": "b2",
+         "life_cycle": "live", "concurrent": None, "health": "good", "stream_status": "active", "title": "y", "views": 50},
+        {"channel_key": "soombi", "taken_at": datetime(2026, 11, 7, 1, tzinfo=UTC), "broadcast_id": "b3",
+         "life_cycle": "complete", "concurrent": 9, "health": None, "stream_status": None, "title": "z", "views": 9},
+        {"channel_key": "soombi", "taken_at": datetime(2026, 11, 6, 1, tzinfo=UTC), "broadcast_id": "old",
+         "life_cycle": "live", "concurrent": 99, "health": "good", "stream_status": "active", "title": "old", "views": 1},
+        {"channel_key": "backthen", "taken_at": datetime(2026, 11, 7, 1, tzinfo=UTC), "broadcast_id": "none",
+         "life_cycle": "none", "concurrent": None, "health": None, "stream_status": None, "title": None, "views": None},
+    ],
+    "yt_yearly_minutes": [{"channel_key": "soombi", "as_of": date(2026, 11, 4),
+                           "min_live": Decimal(6000), "min_vod": Decimal(6000), "min_shorts": Decimal(99999)}],
+    "yt_manual": [{"channel_key": "soombi", "field": "peak_hours", "value": Decimal(0), "as_of": date(2026, 11, 1),
+                   "note": "평일 저녁"},
+                  {"channel_key": "soombi", "field": "official_watch_hours_365", "value": Decimal(150),
+                   "as_of": date(2026, 11, 1), "note": None}],
+    "yt_run_log": [{"run_id": "r", "errors": [{"channel": "pliwav", "stage": "x"}]}],
+    "yt_video_daily": [
+        {"video_id": "L1", "channel_key": "soombi", "day": LATEST, "views": 10, "minutes": Decimal(600)},
+        {"video_id": "L1", "channel_key": "soombi", "day": LATEST - timedelta(days=27), "views": 5, "minutes": Decimal(60)},
+        {"video_id": "L2", "channel_key": "soombi", "day": LATEST, "views": 1, "minutes": Decimal(120)},
+        {"video_id": "L3", "channel_key": "soombi", "day": LATEST, "views": 1, "minutes": Decimal(30)},
+        {"video_id": "L4", "channel_key": "soombi", "day": LATEST, "views": 1, "minutes": Decimal(6)},
+        {"video_id": "A1", "channel_key": "soombi", "day": LATEST, "views": 2, "minutes": Decimal(300)},
+        {"video_id": "S1", "channel_key": "soombi", "day": LATEST, "views": 900, "minutes": Decimal(9000)},
+    ],
+    "yt_video": [
+        {"video_id": v, "channel_key": "soombi", "title": f"t-{v}", "thumbnail_url": f"https://x/{v}.jpg",
+         "published_at": datetime(2026, 10, 1, tzinfo=UTC), "content_kind": k}
+        for v, k in (("L1", "long"), ("L2", "long"), ("L3", "long"), ("L4", "long"),
+                     ("A1", "live_archive"), ("S1", "short"))
+    ],
+    "yt_playlist": [{"channel_key": "soombi", "playlist_id": "p1", "title": "Waltz", "item_count": 2},
+                    {"channel_key": "soombi", "playlist_id": "p2", "title": "Jazz", "item_count": 2}],
+    "yt_playlist_item": [{"playlist_id": "p1", "video_id": "L1", "channel_key": "soombi"},
+                         {"playlist_id": "p1", "video_id": "S1", "channel_key": "soombi"},
+                         {"playlist_id": "p2", "video_id": "L1", "channel_key": "soombi"},
+                         {"playlist_id": "p2", "video_id": "A1", "channel_key": "soombi"}],
+    "yt_audience": _audience_rows(),
+}
+
+
+def _table(sql):
+    return sql.split(" from ", 1)[1].split()[0]
+
+
 def _fake_fetch(conn, sql, params=()):
-    rows = {
-        "yt_channel_daily": [
-            {"channel_key": "soombi", "day": date(2026, 11, 4), "views": 100, "min_live": Decimal(60),
-             "min_vod": Decimal(60), "min_lol_live": Decimal(120), "min_lol_ondemand": Decimal(30),
-             "subs_gained": 5, "subs_lost": 1, "views_shorts": 50, "engaged_views_shorts": 25,
-             "subs_gained_shorts": 2, "min_shorts": None, "min_unspec": None, "collected_at": None},
-            {"channel_key": "soombi", "day": date(2026, 10, 25), "views": 80, "min_live": None,
-             "min_vod": None, "min_lol_live": 0, "min_lol_ondemand": 0, "subs_gained": None,
-             "subs_lost": None, "views_shorts": None, "engaged_views_shorts": None,
-             "subs_gained_shorts": None, "min_shorts": None, "min_unspec": None, "collected_at": None},
-            _day_row("soombi", date(2026, 10, 1), views=7),
-        ],
-        "yt_subs_snapshot": [{"channel_key": "soombi", "taken_on": date(2026, 11, 6),
-                              "api_subscribers": 900, "exact_subscribers": 905}],
-        "yt_schedule": [{"channel_key": "soombi", "video_id": "v", "title": "t",
-                         "publish_at": datetime(2026, 11, 8, 3, tzinfo=UTC), "content_kind": "long",
-                         "seen_at": datetime(2026, 11, 7, 0, 30, tzinfo=UTC)}],
-        "yt_live_snapshot": [{"channel_key": "soombi", "taken_at": datetime(2026, 11, 7, 1, tzinfo=UTC),
-                              "life_cycle": "live", "concurrent": 3, "health": "good",
-                              "stream_status": "active", "title": "x"}],
-        "yt_yearly_minutes": [{"channel_key": "soombi", "as_of": date(2026, 11, 4),
-                               "min_live": Decimal(6000), "min_vod": Decimal(6000)}],
-        "yt_manual": [{"channel_key": "soombi", "field": "official_watch_hours_365",
-                       "value": Decimal(150), "as_of": date(2026, 11, 1)}],
-        "yt_run_log": [{"run_id": "r", "errors": [{"channel": "a2p", "stage": "x"}]}],
-    }
-    for table, r in rows.items():
-        if table in sql:
-            return r
+    if _table(sql) in ROWS:
+        return ROWS[_table(sql)]
     raise AssertionError(sql)
-
-
-def test_build_shape_from_fake_rows(monkeypatch):
-    monkeypatch.setattr(render, "fetch", _fake_fetch)
-    cfg = {"channels": registry.load_channels(), "thresholds": registry.load_thresholds()}
-    d = json.loads(json.dumps(render.build(None, today=TODAY, config=cfg), default=render._json_default))
-    assert set(d) == {"generated_at", "latest_day", "lag_days", "trust", "channels", "periods",
-                      "live", "schedule", "monetization", "shorts", "errors"}
-    assert d["latest_day"] == "2026-11-04" and d["lag_days"] == 3
-    assert set(d["periods"]) == {"7", "28", "90"}
-    p7 = d["periods"]["7"]
-    assert set(p7) == {"start", "end", "prev_start", "prev_end", "channels"}
-    m = p7["channels"]["soombi"]
-    assert set(m) == {"views", "subs_net", "watch_hours"}
-    # 7-day baseline = 10-01..10-28 total (7 + 80 = 87) scaled to 7 days = 21.8
-    assert m["views"]["prev"] == 21.8 and m["views"]["pct"] == 358.7 and m["views"]["status"] == "green"
-    assert m["views"]["cur"] == 100 and len(m["views"]["spark"]) == 7 and m["views"]["spark"][-1] == 100
-    assert m["watch_hours"]["cur"] == 2.0 and m["subs_net"]["cur"] == 4
-    assert d["periods"]["28"]["channels"]["soombi"]["views"]["cur"] == 180
-    assert p7["channels"]["a2p"]["views"]["cur"] is None
-    assert d["channels"][0]["subscribers"] == {"api": 900, "exact": 905}
-    assert set(d["live"]) == {k for k, c in cfg["channels"].items() if c.is_live}
-    assert d["live"]["soombi"]["hours_live"] == 2.0
-    assert d["live"]["soombi"]["last_snapshot"]["life_cycle"] == "live"
-    sc = d["schedule"]["soombi"]
-    assert set(sc) == {"long", "shorts", "next_long", "next_shorts", "next7", "shortage"}
-    assert sc["long"] == 1 and len(sc["next7"]) == 7 and sc["next7"][1]["long"] == 1
-    mo = d["monetization"]["soombi"]
-    assert mo["subs_exact"] == 905 and mo["subs_pct"] == 90.5 and mo["hours_approx"] == 200.0
-    assert mo["hours_pct"] == 5.0 and mo["official"] == {"value": 150.0, "as_of": "2026-11-01"}
-    assert d["shorts"]["soombi"] == {"views": 50, "engaged_ratio": 0.5, "subs_per_1k": 40.0}
-    assert d["errors"] == [{"channel": "a2p", "stage": "x", "run_started_at": None}]
 
 
 def _cfg():
@@ -112,43 +126,152 @@ def _cfg():
 
 def _build(monkeypatch, **override):
     def fetch(conn, sql, params=()):
-        for table, r in override.items():
-            if table in sql:
-                return r
+        if _table(sql) in override:
+            return override[_table(sql)]
         return _fake_fetch(conn, sql, params)
 
     monkeypatch.setattr(render, "fetch", fetch)
     return json.loads(json.dumps(render.build(None, today=TODAY, config=_cfg()), default=render._json_default))
 
 
-def test_period_summary_scales_prev_to_window_length():
-    # 7-day window judged against the 28 days before it, scaled to 7 days
-    win = (date(2026, 10, 29), date(2026, 11, 4))
-    cmp_win = (date(2026, 10, 1), date(2026, 10, 28))
-    rows = [_day_row("soombi", date(2026, 10, 1) + timedelta(days=i), views=4) for i in range(28)]
-    rows += [_day_row("soombi", date(2026, 10, 29) + timedelta(days=i), views=1) for i in range(7)]
-    s = render.period_summary(rows, win, cmp_win, lambda r: r["views"], 5.0, -5.0)
-    assert s["cur"] == 7 and s["prev"] == 28.0 and s["pct"] == -75.0 and s["status"] == "red"
+def test_v3_top_level_shape(monkeypatch):
+    d = _build(monkeypatch)
+    assert set(d) == KEYS and d["v"] == 3
+    assert d["latest_day"] == "2026-11-04" and d["lag_days"] == 3
+    assert d["order"] == list(render.ORDER) == [
+        "soombi", "backthen", "urachacha", "a2p", "justsoombi", "soombicafe", "groovewav", "pliwav"]
+    assert [c["key"] for c in d["channels"]] == d["order"]
+    assert set(d["channels"][0]) == {"key", "display", "is_live", "collect_failed", "errors"}
+    for section in ("board", "subs_trend", "watch_trend", "detail"):
+        assert list(d[section]) == d["order"], section
+    assert d["errors"] == [{"channel": "pliwav", "stage": "x", "run_started_at": None}]
 
 
-def test_period_prev_none_when_history_too_short(monkeypatch):
-    # history starts 10-25, after the 7-day compare window start (10-01): no comparison
-    rows = [_day_row("soombi", date(2026, 11, 4), views=100), _day_row("soombi", date(2026, 10, 25), views=80)]
-    d = _build(monkeypatch, yt_channel_daily=rows)
-    v = d["periods"]["7"]["channels"]["soombi"]["views"]
-    assert v["cur"] == 100 and v["prev"] is None and v["pct"] is None and v["status"] == "grey"
-    assert len(v["spark"]) == 7
+def test_board_h48_and_subscribers(monkeypatch):
+    b = _build(monkeypatch)["board"]["soombi"]
+    assert set(b) == {"subscribers", "h48", "live", "health", "monet"}
+    assert b["subscribers"] == 905  # exact wins over api
+    # 11-03 (1.0h) + 11-04 (2.0h) = 3.0 vs 11-01 + 11-02 = 4.0 -> -25%
+    assert b["h48"] == {"cur": 3.0, "prev": 4.0, "pct": -25.0, "status": "blue", "days": ["2026-11-03", "2026-11-04"]}
+    a2p = _build(monkeypatch)["board"]["a2p"]
+    assert a2p["subscribers"] == 1200  # api when exact is None
+    # behind the global latest day: current window shown, no comparison
+    assert a2p["h48"]["cur"] == 2.0 and a2p["h48"]["prev"] is None and a2p["h48"]["status"] == "grey"
+    assert _build(monkeypatch)["board"]["groovewav"]["h48"]["cur"] is None
 
 
-def test_channel_behind_global_latest_is_grey(monkeypatch):
-    rows = [_day_row("soombi", date(2026, 11, 4), views=100)]
-    rows += [_day_row("a2p", date(2026, 8, 1) + timedelta(days=i), views=10) for i in range(94)]  # to 11-02
-    d = _build(monkeypatch, yt_channel_daily=rows)
-    assert d["latest_day"] == "2026-11-04"
-    for p in ("7", "28", "90"):
-        for m in d["periods"][p]["channels"]["a2p"].values():
-            assert m["prev"] is None and m["pct"] is None and m["status"] == "grey"
-    assert d["periods"]["7"]["channels"]["a2p"]["views"]["cur"] == 50
+def test_board_live_state(monkeypatch):
+    d = _build(monkeypatch)["board"]
+    # newest taken_at only; broadcast b3 (complete) excluded; viewers sum skips None
+    assert d["soombi"]["live"] == {"on": True, "dual": True, "count": 2, "viewers": 3, "views": 150,
+                                   "title": "x", "taken_at": "2026-11-07T01:00:00+00:00"}
+    assert d["backthen"]["live"] == {"on": False, "dual": False, "count": 0, "viewers": None, "views": None,
+                                     "title": None, "taken_at": "2026-11-07T01:00:00+00:00"}
+    assert d["justsoombi"]["live"]["taken_at"] is None and d["justsoombi"]["live"]["on"] is False
+    assert d["urachacha"]["live"] is None  # not a live channel
+
+
+def test_board_monet_and_health(monkeypatch):
+    d = _build(monkeypatch)
+    m = d["board"]["soombi"]["monet"]
+    assert m == {"subs": 905, "subs_pct": 90.5, "hours": 200.0, "hours_pct": 5.0, "monetized": False}
+    assert d["board"]["soombi"]["health"] == "blue"  # min(90.5, 5.0) < 30
+    assert d["detail"]["soombi"]["monet"] == m
+    assert d["board"]["a2p"]["health"] == "red"  # monetized wins
+    assert d["board"]["groovewav"]["health"] == "grey" and d["board"]["groovewav"]["monet"]["subs"] is None
+
+
+def test_health_of_thresholds():
+    def m(s, h, mon=False):
+        return {"subs_pct": s, "hours_pct": h, "monetized": mon}
+    assert render.health_of(m(70, 80)) == "red"
+    assert render.health_of(m(30, 100)) == "purple"
+    assert render.health_of(m(100, 29.9)) == "blue"
+    assert render.health_of(m(None, 50)) == "grey"
+    assert render.health_of(m(None, None, True)) == "red"
+
+
+def test_subs_trend_restores_totals(monkeypatch):
+    d = _build(monkeypatch)["subs_trend"]["soombi"]
+    assert set(d) == {"365", "14"}
+    t = d["365"]
+    assert t["start"] == "2026-10-01" and t["end"] == "2026-11-04"  # clamped to the first data day
+    assert len(t["series"]) == 35
+    last, prev = t["series"][-1], t["series"][-2]
+    assert last == {"day": "2026-11-04", "total": 905, "net": 4}
+    assert prev == {"day": "2026-11-03", "total": 901, "net": 4}
+    # a day without data: net null, total carried (nothing subtracted)
+    gap = next(s for s in t["series"] if s["day"] == "2026-10-20")
+    assert gap["net"] is None and gap["total"] == 905 - 4 * 10
+    first = t["series"][0]
+    assert first["day"] == "2026-10-01" and first["net"] == 2 and first["total"] == 905 - 40
+    assert t["total_net"] == 42 and t["status"] == "red"  # second half (all 10 days) vs first half (2)
+    s14 = d["14"]
+    assert s14["start"] == "2026-10-22" and len(s14["series"]) == 14 and s14["total_net"] == 40
+    assert s14["series"][0] == {"day": "2026-10-22", "total": 865, "net": None}
+    # no subscriber snapshot: totals null, nets still there
+    g = _build(monkeypatch)["subs_trend"]["groovewav"]["14"]
+    assert g["total_net"] is None and g["status"] == "grey" and all(s["total"] is None for s in g["series"])
+
+
+def test_subs_trend_total_null_without_snapshot(monkeypatch):
+    d = _build(monkeypatch, yt_subs_snapshot=[])["subs_trend"]["soombi"]["14"]
+    assert all(s["total"] is None for s in d["series"]) and d["series"][-1]["net"] == 4
+
+
+def test_watch_trend_windows(monkeypatch):
+    w = _build(monkeypatch)["watch_trend"]["soombi"]
+    assert set(w) == {"365", "28", "7"}
+    assert w["7"]["start"] == "2026-10-29" and w["7"]["end"] == "2026-11-04"
+    assert [s["hours"] for s in w["7"]["series"]] == [2.0, 2.0, 2.0, 2.0, 2.0, 1.0, 2.0]
+    assert w["7"]["total"] == 13.0 and w["7"]["status"] == "red"  # first 3 days 6.0 vs last 4 days 7.0 -> +16.7%
+    assert w["28"]["total"] == 19.0 and len(w["28"]["series"]) == 28 and w["28"]["series"][0]["hours"] is None
+    assert w["365"]["start"] == "2026-10-01" and len(w["365"]["series"]) == 35
+    # shorts minutes never count
+    assert w["28"]["total"] < 100
+    e = _build(monkeypatch)["watch_trend"]["groovewav"]["7"]
+    assert e["total"] is None and e["status"] == "grey" and len(e["series"]) == 7
+
+
+def test_detail_top_videos_and_genres(monkeypatch):
+    dt = _build(monkeypatch)["detail"]["soombi"]
+    assert set(dt) == {"monet", "audience", "top_long", "top_live", "subs_sources", "genres"}
+    assert [v["video_id"] for v in dt["top_long"]] == ["L1", "L2", "L3"]  # top 3 by minutes, shorts excluded
+    assert dt["top_long"][0] == {"video_id": "L1", "title": "t-L1", "thumb": "https://x/L1.jpg",
+                                 "published_at": "2026-10-01T00:00:00+00:00", "hours": 11.0, "views": 15}
+    assert [v["video_id"] for v in dt["top_live"]] == ["A1"] and dt["top_live"][0]["hours"] == 5.0
+    # genres: L1 counts in both playlists, S1 (short) never, total = 660 + 960 = 1620 min
+    assert dt["genres"] == [{"name": "Jazz", "hours": 16.0, "share": 59.3},
+                            {"name": "Waltz", "hours": 11.0, "share": 40.7}]
+    assert _build(monkeypatch)["detail"]["a2p"]["genres"] == []
+    assert _build(monkeypatch)["detail"]["a2p"]["top_long"] == []
+
+
+def test_detail_subs_sources(monkeypatch):
+    s = _build(monkeypatch)["detail"]["soombi"]["subs_sources"]
+    # 28-day window: 10 days x (5 gained: 3 shorts, 1 vod, 0 live -> 1 other), 10 lost
+    assert s == {"days": 28, "shorts": 30, "vod": 10, "live": 0, "other": 10, "lost": 10}
+    assert _build(monkeypatch)["detail"]["groovewav"]["subs_sources"] == {
+        "days": 28, "shorts": None, "vod": None, "live": None, "other": None, "lost": None}
+
+
+def test_detail_audience(monkeypatch):
+    a = _build(monkeypatch)["detail"]["soombi"]["audience"]
+    assert set(a) == {"subscribers", "viewers"}
+    v = a["viewers"]
+    assert v["as_of"] == "2026-11-06" and v["peak_hours"] is None
+    # weighted: vod 300 / live 100 -> 35-44 female = (40*300 + 80*100)/400 = 50 ; 45-54 male = 10*300/400 = 7.5
+    assert v["age_gender"] == [{"age": "age35-44", "gender": "female", "pct": 50.0},
+                               {"age": "age45-54", "gender": "male", "pct": 7.5}]
+    # country: vod + live merged, by minutes, stale as_of dropped
+    assert v["country"] == [{"country": "KR", "views": 350, "minutes": 1500.0},
+                            {"country": "US", "views": 50, "minutes": 120.0},
+                            {"country": "JP", "views": 10, "minutes": 10.0}]
+    s = a["subscribers"]
+    assert s["peak_hours"] == "평일 저녁"
+    assert s["age_gender"] == [{"age": "age55-64", "gender": "female", "pct": 70.0}] and s["country"] == []
+    empty = _build(monkeypatch)["detail"]["a2p"]["audience"]["viewers"]
+    assert empty == {"age_gender": [], "country": [], "peak_hours": None, "as_of": None}
 
 
 def test_collect_failed_flag_from_run_log(monkeypatch):
@@ -164,29 +287,10 @@ def test_collect_failed_flag_from_run_log(monkeypatch):
     assert flags["backthen"] is False and flags["soombi"] is False
 
 
-def test_schedule_ignores_stale_seen_at(monkeypatch):
-    old, new = datetime(2026, 11, 5, 0, 30, tzinfo=UTC), datetime(2026, 11, 7, 0, 30, tzinfo=UTC)
-    sched = [
-        {"channel_key": "soombi", "video_id": "kept", "title": "t", "content_kind": "long",
-         "publish_at": datetime(2026, 11, 8, 3, tzinfo=UTC), "seen_at": new},
-        {"channel_key": "soombi", "video_id": "ghost", "title": "t", "content_kind": "short",
-         "publish_at": datetime(2026, 11, 9, 3, tzinfo=UTC), "seen_at": old},
-        {"channel_key": "a2p", "video_id": "other", "title": "t", "content_kind": "short",
-         "publish_at": datetime(2026, 11, 9, 3, tzinfo=UTC), "seen_at": old},
-    ]
-    d = _build(monkeypatch, yt_schedule=sched)
-    assert d["schedule"]["soombi"]["long"] == 1 and d["schedule"]["soombi"]["shorts"] == 0
-    assert d["schedule"]["a2p"]["shorts"] == 1  # max(seen_at) is per channel
-
-
-def test_live_none_without_rows(monkeypatch):
-    rows = [_day_row("soombi", date(2026, 11, 4), views=100, min_lol_live=None, min_lol_ondemand=None)]
-    d = _build(monkeypatch, yt_channel_daily=rows)
-    live = d["live"]
-    assert live["soombi"]["hours_live"] is None and live["soombi"]["hours_ondemand"] is None
-    assert live["soombi"]["days_with_live"] == 0
-    no_rows = next(k for k in live if k != "soombi")
-    assert live[no_rows]["days_with_live"] is None and live[no_rows]["hours_live"] is None
+def test_failed_channel_has_no_h48_comparison(monkeypatch):
+    log = [{"run_id": "r", "errors": [{"channel": "soombi", "stage": "channel_daily", "error": "HttpError"}]}]
+    h = _build(monkeypatch, yt_run_log=log)["board"]["soombi"]["h48"]
+    assert h["cur"] == 3.0 and h["prev"] is None and h["pct"] is None and h["status"] == "grey"
 
 
 def test_collect_failed_uses_last_run_covering_channel(monkeypatch):
@@ -209,3 +313,25 @@ def test_run_without_channels_value_covers_every_channel(monkeypatch):
     d = _build(monkeypatch, yt_run_log=log)
     flags = {c["key"]: c["collect_failed"] for c in d["channels"]}
     assert flags["a2p"] is True and flags["soombi"] is False
+
+
+def test_missing_v3_tables_do_not_stop_render(monkeypatch):
+    def fetch(conn, sql, params=()):
+        if _table(sql) in ("yt_audience", "yt_playlist", "yt_playlist_item", "yt_video", "yt_video_daily"):
+            raise RuntimeError("relation does not exist")
+        return _fake_fetch(conn, sql, params)
+
+    monkeypatch.setattr(render, "fetch", fetch)
+    d = json.loads(json.dumps(render.build(None, today=TODAY, config=_cfg()), default=render._json_default))
+    dt = d["detail"]["soombi"]
+    assert dt["top_long"] == [] and dt["genres"] == []
+    assert dt["audience"]["viewers"]["age_gender"] == []
+    assert d["board"]["soombi"]["subscribers"] == 905
+
+
+def test_empty_db(monkeypatch):
+    d = _build(monkeypatch, **{t: [] for t in ROWS})
+    assert d["latest_day"] is None and d["lag_days"] is None
+    b = d["board"]["soombi"]
+    assert b["h48"] == {"cur": None, "prev": None, "pct": None, "status": "grey", "days": []}
+    assert d["subs_trend"]["soombi"]["365"]["series"] == [] and d["watch_trend"]["soombi"]["7"]["total"] is None

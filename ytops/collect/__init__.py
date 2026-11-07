@@ -1,5 +1,5 @@
 """Collectors: each module exposes collect(ctx, start, end) -> {table: rows}."""
-from ytops.collect import channel_daily, live, schedule, subs, video, video_daily
+from ytops.collect import audience, channel_daily, live, playlists, schedule, subs, video, video_daily
 
 COLLECTORS = [
     ("channel_daily", channel_daily),
@@ -8,4 +8,6 @@ COLLECTORS = [
     ("video_daily", video_daily),
     ("schedule", schedule),
     ("live", live),
+    ("audience", audience),
+    ("playlists", playlists),
 ]

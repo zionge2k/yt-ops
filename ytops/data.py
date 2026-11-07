@@ -51,13 +51,42 @@ class DataClient:
         seen: set[str] = set()
         for i in range(0, len(ids), BATCH):
             resp = self._run(self._service.videos().list(
-                part="snippet,contentDetails,status,liveStreamingDetails",
+                part="snippet,contentDetails,status,liveStreamingDetails,statistics",
                 id=",".join(ids[i:i + BATCH])))
             for item in resp.get("items", []):
                 if item.get("id") not in seen:
                     seen.add(item.get("id"))
                     out.append(item)
         return out
+
+    def _pages(self, make_request) -> list[dict]:
+        """All items of a paged list; make_request(page_token) builds one request."""
+        items: list[dict] = []
+        token = None
+        while True:
+            page = self._run(make_request(token))
+            items.extend(page.get("items", []))
+            token = page.get("nextPageToken")
+            if not token:
+                return items
+
+    def playlists(self) -> list[dict]:
+        """Every playlist of the channel (snippet + contentDetails)."""
+        def req(token):
+            kwargs = dict(part="snippet,contentDetails", mine=True, maxResults=BATCH)
+            if token:
+                kwargs["pageToken"] = token
+            return self._service.playlists().list(**kwargs)
+        return self._pages(req)
+
+    def playlist_items(self, playlist_id: str) -> list[dict]:
+        """Every item of one playlist (contentDetails only)."""
+        def req(token):
+            kwargs = dict(part="contentDetails", playlistId=playlist_id, maxResults=BATCH)
+            if token:
+                kwargs["pageToken"] = token
+            return self._service.playlistItems().list(**kwargs)
+        return self._pages(req)
 
     def active_broadcasts(self) -> list[dict]:
         # `mine` must not be combined with broadcastStatus.

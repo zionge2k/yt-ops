@@ -1,0 +1,96 @@
+name: live
+
+on:
+  schedule:
+    # 20분마다: 라이브 스냅샷만 모아 화면을 다시 만든다 (일일 수집은 daily.yml)
+    - cron: '*/20 * * * *'
+  workflow_dispatch:
+
+# daily 와 같은 group — Pages 배포가 서로 겹치지 않게 차례로 돈다.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 금고 받기
+        uses: actions/checkout@v4
+        with:
+          repository: zionge2k/yt-channels-vault
+          ssh-key: ${{ secrets.VAULT_SSH_KEY }}
+          path: vault
+
+      - name: 금고 풀기 (토큰은 러너 임시 폴더에만)
+        env:
+          AGE_KEY: ${{ secrets.AGE_KEY }}
+        run: |
+          umask 077
+          # age 배포본은 지문(SHA256)이 맞을 때만 푼다 — daily.yml 과 같은 값. 버전을 올리면 두 파일을 같이 바꾼다.
+          AGE_URL="https://github.com/FiloSottile/age/releases/download/v1.2.1/age-v1.2.1-linux-amd64.tar.gz"
+          AGE_SHA256="7df45a6cc87d4da11cc03a539a7470c15b1041ab2b396af088fe9990f7c79d50"
+          curl -sSL -o "$RUNNER_TEMP/age.tgz" "$AGE_URL"
+          echo "$AGE_SHA256  $RUNNER_TEMP/age.tgz" | sha256sum -c - || { echo "⛔ age 지문 불일치 — 다운로드를 믿을 수 없어 중단"; exit 1; }
+          tar -xz -C "$RUNNER_TEMP" -f "$RUNNER_TEMP/age.tgz" && rm -f "$RUNNER_TEMP/age.tgz"
+          printf '%s\n' "$AGE_KEY" > "$RUNNER_TEMP/age.key"
+          "$RUNNER_TEMP/age/age" -d -i "$RUNNER_TEMP/age.key" vault/yt-channels.tar.age | tar -xz -C "$RUNNER_TEMP"
+          rm -f "$RUNNER_TEMP/age.key"
+          echo "YT_CHANNELS_HOME=$RUNNER_TEMP/yt-channels" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: 스키마 맞추기
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python -m ytops schema --apply
+
+      # Deploy must happen even if collection reports errors; failure is surfaced in the last step.
+      - name: 라이브 수집
+        id: collect
+        continue-on-error: true
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python -m ytops collect --all --only live
+
+      - name: 화면 데이터 만들기
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python -m ytops render --out "$RUNNER_TEMP/data.json"
+
+      - name: 암호화
+        env:
+          DASH_PASSWORD: ${{ secrets.DASH_PASSWORD }}
+        run: |
+          rm -f site/sample.json
+          python -m ytops encrypt "$RUNNER_TEMP/data.json" site/data.enc
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: 배포
+        id: deploy
+        uses: actions/deploy-pages@v4
+
+      - name: 수집 오류 알림
+        if: steps.collect.outcome == 'failure'
+        run: echo "라이브 수집 오류 있음 — 로그 확인" && exit 1

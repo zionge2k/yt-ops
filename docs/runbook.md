@@ -21,8 +21,8 @@
 Actions 탭 → **daily** → Run workflow.
 
 - 평소: `backfill_days` 0 → `collect --all` (최근 10일).
-- 첫 실행: `backfill_days` = **185** → 과거 185일 채움(90일 비교에 이전 90일이 필요하고 분석 데이터가 ~3일 늦어서).
-- 자동 실행: 매일 KST 09:30.
+- 첫 실행: `backfill_days` = **365** → 과거 1년 채움(구독자 365일 그래프용; channel_daily 는 180일씩 잘라 모은다).
+- 자동 실행: 매일 KST 09:30. 라이브 스냅샷은 **live** 워크플로가 20분마다 따로 모아 화면을 다시 만든다(같은 `pages` group 이라 배포는 차례로).
 - 수집에 오류가 있어도 화면은 먼저 배포되고, 마지막 단계가 빨갛게 실패한다. 로그의 `errors=` 줄을 본다.
 
 ## ③ 비밀번호 교체
@@ -48,6 +48,22 @@ ytops query --channel soombicafe --dims ageGroup,gender --metrics viewerPercenta
 ytops manual set soombi official_watch_hours_365 3164 --as-of 2026-11-03
 ytops collect --channel pliwav --dry-run
 ```
+
+3판(2026-11-07) 추가:
+
+```
+# 시청 시간대(손입력): value 는 무시, --note 의 글이 화면에 그대로 보인다
+ytops manual set soombi peak_hours 0 --as-of 2026-11-07 --note "평일 저녁 8~11시"
+ytops manual set soombi peak_hours_viewers 0 --as-of 2026-11-07 --note "주말 오전"
+# 라이브 스냅샷만(20분 워크플로 live.yml 이 쓰는 명령)
+ytops collect --all --only live
+# 1년 백필: channel_daily 는 180일씩 잘라 수집된다(쿼리 1,000행 상한), video_daily 는 28일 그대로
+ytops backfill --all --days 365
+# 새 표 적용(멱등) — 맏이만: db/migrations/2026-11-07-v3.sql 과 같은 정의가 schema.sql 에 있다
+ytops schema --apply
+```
+
+- PC 에서는 `ytops` 대신 `python -m ytops ...`.
 
 ## ⑤ PC(Windows)에서 쓰는 법
 

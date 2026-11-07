@@ -16,9 +16,13 @@ create table if not exists yt_channel_daily (
   engaged_views_shorts bigint,
   subs_gained_shorts integer,
   collected_at timestamptz,
+  subs_gained_vod integer,
+  subs_gained_live integer,
   primary key (channel_key, day)
 );
 alter table yt_channel_daily enable row level security;
+alter table yt_channel_daily add column if not exists subs_gained_vod integer;
+alter table yt_channel_daily add column if not exists subs_gained_live integer;
 
 create table if not exists yt_yearly_minutes (
   channel_key text not null,
@@ -94,9 +98,11 @@ create table if not exists yt_live_snapshot (
   stream_status text,
   actual_start timestamptz,
   title text,
+  views bigint,
   primary key (channel_key, taken_at, broadcast_id)
 );
 alter table yt_live_snapshot enable row level security;
+alter table yt_live_snapshot add column if not exists views bigint;
 
 create table if not exists yt_manual (
   channel_key text not null,
@@ -120,3 +126,36 @@ create table if not exists yt_run_log (
   primary key (run_id)
 );
 alter table yt_run_log enable row level security;
+
+-- 3판(2026-11-07-v3): 청중 · 재생목록
+create table if not exists yt_audience (
+  channel_key text not null,
+  as_of date not null,
+  segment text not null,   -- subscribed | unsubscribed
+  content text not null,   -- vod | live
+  dim text not null,       -- age_gender | country | weight
+  key text not null,       -- "<age>/<gender>" | country code | content type
+  views bigint,
+  minutes numeric,
+  pct numeric,
+  primary key (channel_key, as_of, segment, content, dim, key)
+);
+alter table yt_audience enable row level security;
+
+create table if not exists yt_playlist (
+  channel_key text not null,
+  playlist_id text not null,
+  title text,
+  item_count integer,
+  seen_at timestamptz,
+  primary key (playlist_id)
+);
+alter table yt_playlist enable row level security;
+
+create table if not exists yt_playlist_item (
+  playlist_id text not null,
+  video_id text not null,
+  channel_key text not null,
+  primary key (playlist_id, video_id)
+);
+alter table yt_playlist_item enable row level security;

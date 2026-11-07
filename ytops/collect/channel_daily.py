@@ -15,8 +15,10 @@ _MINUTES = "estimatedMinutesWatched"
 _COLS = (
     "views", "min_shorts", "min_live", "min_vod", "min_unspec", "min_lol_live",
     "min_lol_ondemand", "subs_gained", "subs_lost", "views_shorts",
-    "engaged_views_shorts", "subs_gained_shorts",
+    "engaged_views_shorts", "subs_gained_shorts", "subs_gained_vod", "subs_gained_live",
 )
+_SUBS_BY_TYPE = {"shorts": "subs_gained_shorts", "videoOnDemand": "subs_gained_vod",
+                 "liveStream": "subs_gained_live"}
 
 
 def _day(value: str) -> date:
@@ -42,13 +44,16 @@ def collect(ctx: CollectContext, start: date, end: date) -> dict[str, list[dict]
     ):
         d = row(_day(r["day"]))
         for col in ("min_shorts", "min_live", "min_vod", "min_unspec",
-                    "views_shorts", "engaged_views_shorts", "subs_gained_shorts"):
+                    "views_shorts", "engaged_views_shorts", "subs_gained_shorts",
+                    "subs_gained_vod", "subs_gained_live"):
             d[col] = d[col] or 0
-        d[_BY_TYPE.get(r["creatorContentType"], "min_unspec")] += r[_MINUTES]
-        if r["creatorContentType"] == "shorts":
+        kind = r["creatorContentType"]
+        d[_BY_TYPE.get(kind, "min_unspec")] += r[_MINUTES]
+        if kind in _SUBS_BY_TYPE:
+            d[_SUBS_BY_TYPE[kind]] += r["subscribersGained"]
+        if kind == "shorts":
             d["views_shorts"] += r["views"]
             d["engaged_views_shorts"] += r["engagedViews"]
-            d["subs_gained_shorts"] += r["subscribersGained"]
 
     # Query 3: live vs on-demand minutes
     for r in ctx.analytics.query(start, end, "day,liveOrOnDemand", _MINUTES, max_results=MAX_ROWS):

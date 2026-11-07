@@ -1,16 +1,20 @@
-// yt-ops dashboard: static page, renders data.json (from data.enc, or sample.json in dev).
+// yt-ops dashboard v3: static page, renders data.json (from data.enc, or sample.json in dev).
+// Routes (hash): #board (default) · #subs · #watch · #ch/<key>
 "use strict";
 
 const STORE_KEY = "ytops_pw";
+const WIN_KEY = "ytops_watch_win";
 const app = document.getElementById("app");
 let DATA = null;
-let period = "7";
 let sampleMode = false;
+let watchWin = "28";
 
 // ---------- helpers ----------
 const isNull = (v) => v === null || v === undefined;
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmt = (v, d = 0) => isNull(v) ? "—" : Number(v).toLocaleString("ko-KR", { maximumFractionDigits: d });
+const signed = (v, d = 0) => isNull(v) ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + fmt(Math.abs(v), d);
+const pct = (v) => isNull(v) ? "—" : `${v > 0 ? "+" : v < 0 ? "−" : ""}${fmt(Math.abs(v), Math.abs(v) < 10 ? 1 : 0)}%`;
 const kst = (iso) => {
   const o = {};
   new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
@@ -18,241 +22,225 @@ const kst = (iso) => {
   return o;
 };
 const mdhm = (iso) => { const p = kst(iso); return `${p.month}/${p.day} ${p.hour}:${p.minute}`; };
-const ymd = (d) => { const [, m, dd] = d.split("-"); return `${+m}/${+dd}`; };
-// weekday of a YYYY-MM-DD calendar date, independent of the viewer's timezone
-const wday = (d) => "일월화수목금토"[new Date(Date.UTC(...d.split("-").map((x, i) => (i === 1 ? x - 1 : +x)))).getUTCDay()];
-const addDays = (d, n) => { const t = new Date(d + "T00:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
+const ymd = (d) => { if (!d) return "—"; const [, m, dd] = d.split("-"); return `${+m}/${+dd}`; };
+const ymdFull = (d) => { if (!d) return "—"; const [y, m, dd] = d.split("-"); return `${y}.${+m}.${+dd}`; };
+const COLOR = { red: "var(--red)", purple: "var(--purple)", blue: "var(--blue)", grey: "var(--off)" };
+const col = (s) => COLOR[s] || COLOR.grey;
+const nameOf = (key) => { const c = DATA.channels.find((x) => x.key === key); return c ? c.display : key; };
 
-// Korean particle: 이/가, 과/와 depending on final consonant
-const jong = (w) => { const c = w.charCodeAt(w.length - 1); return c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 !== 0; };
-const iga = (w) => w + (jong(w) ? "이" : "가");
-const gwa = (w) => w + (jong(w) ? "과" : "와");
-
-const METRIC = { watch_hours: "시청시간", views: "조회수", subs_net: "순증" };
-const STATUS = {
-  red: { word: "떨어짐", order: 0 },
-  yellow: { word: "흔들림", order: 1 },
-  green: { word: "오름", order: 2 },
-  grey: { word: "확인 불가", order: 3 },
-};
-
-function pctText(m) {
-  if (isNull(m.pct)) return "";
-  if (m.pct === 0) return "그대로";
-  return `${m.pct > 0 ? "+" : "−"}${fmt(Math.abs(m.pct), Math.abs(m.pct) < 10 ? 1 : 0)}%`;
+function store(op, key, value) {
+  try {
+    if (op === "get") return localStorage.getItem(key);
+    if (op === "set") localStorage.setItem(key, value);
+    if (op === "del") localStorage.removeItem(key);
+  } catch (e) { /* storage may be blocked; page still works */ }
+  return null;
 }
 
-// provisional rule for one channel's status (see header comment)
-function channelStatus(ch, m) {
-  if (ch.collect_failed) return "grey";
-  const st = Object.keys(METRIC).map((k) => m[k].status);
-  const reds = st.filter((s) => s === "red").length;
-  const yellows = st.filter((s) => s === "yellow").length;
-  if (reds >= 2) return "red";
-  if (reds === 1 || yellows >= 2) return "yellow";
-  return "green";
-}
-
-function reason(m, status) {
-  if (status === "grey") return "숫자를 못 가져왔어요";
-  const order = ["watch_hours", "views", "subs_net"];
-  const bad = order.filter((k) => m[k].status === "red").map((k) => METRIC[k]);
-  if (bad.length) {
-    const subj = bad.length === 1 ? iga(bad[0]) : bad.slice(0, -1).map(gwa).join(" ") + " " + iga(bad[bad.length - 1]);
-    return `${subj} 줄었어요`;
-  }
-  const up = order.filter((k) => m[k].status === "green").map((k) => METRIC[k]);
-  if (status === "green") return up.length ? `${iga(up[0])} 늘었어요` : "고르게 좋아요";
-  return "조금 줄거나 그대로예요";
-}
-
-const subsOf = (ch) => !ch.subscribers ? null : (isNull(ch.subscribers.exact) ? ch.subscribers.api : ch.subscribers.exact);
-
-function rows() {
-  const per = DATA.periods[period];
-  return DATA.channels.map((ch) => {
-    const m = per.channels[ch.key];
-    const status = channelStatus(ch, m);
-    const reds = Object.keys(METRIC).filter((k) => m[k].status === "red").length;
-    return { ch, m, status, reds, why: reason(m, status) };
-  }).sort((a, b) => STATUS[a.status].order - STATUS[b.status].order
-    || b.reds - a.reds
-    || (a.m.watch_hours.pct ?? 0) - (b.m.watch_hours.pct ?? 0));
-}
-
-// ---------- top ----------
-function renderTop(rs) {
-  const gen = kst(DATA.generated_at);
-  const per = DATA.periods[period];
-  const line = (s, tail) => {
-    const list = rs.filter((r) => r.status === s);
-    if (!list.length) return "";
-    return `<p><span class="pill s-${s}">${STATUS[s].word} ${list.length}곳</span><span>${list.map((r) => `<b>${esc(r.ch.display)}</b>`).join(", ")}${tail ? ` <span style="color:var(--ink-2)">${tail}</span>` : ""}</span></p>`;
-  };
-  const btns = ["7", "28", "90"].map((p) => `<button type="button" data-period="${p}" aria-pressed="${p === period}">${p}일</button>`).join("");
-  return `<div class="top">
-      <div><h1>${gen.month}월 ${gen.day}일 채널 상황</h1>
-        <p class="when">${gen.hour}:${gen.minute}에 만든 화면이에요. 지난 ${period}일을 ${period === "7" ? "그 전 4주 평균" : `그 전 ${period}일`}과 비교했어요.</p></div>
-      <div class="period"><div class="seg" role="group" aria-label="기간">${btns}</div>
-        <span class="range"><b class="n">${ymd(per.start)}~${ymd(per.end)}</b> 숫자예요. 유튜브 집계는 ${DATA.lag_days}일 늦게 들어와요.</span></div>
-    </div>
-    <div class="verdict">${line("red")}${line("yellow")}${line("green")}${line("grey", "연결을 다시 해야 해요")}</div>
-    <p class="provisional">상태 기준은 아직 임시예요.</p>`;
-}
-
-// ---------- cards ----------
-function bars(values, start) {
-  const W = 300, H = 30, n = values.length;
-  const nums = values.filter((v) => !isNull(v));
-  if (!nums.length) return "";
-  const max = Math.max(...nums) || 1;
-  const gap = n > 30 ? 0.6 : n > 10 ? 2 : 5;
-  const bw = (W - gap * (n - 1)) / n;
-  const rects = values.map((v, i) => {
-    const x = (i * (bw + gap)).toFixed(2);
-    const day = ymd(addDays(start, i));
-    if (isNull(v)) return `<rect x="${x}" y="${H - 2}" width="${bw.toFixed(2)}" height="2" style="fill:var(--rule)"><title>${day} 숫자 없음</title></rect>`;
-    const h = Math.max(2, (v / max) * (H - 2));
-    return `<rect x="${x}" y="${(H - h).toFixed(2)}" width="${bw.toFixed(2)}" height="${h.toFixed(2)}" rx="${n > 30 ? 0 : 1.5}"><title>${day} ${fmt(v)}시간</title></rect>`;
+// ---------- charts (inline SVG, no libraries) ----------
+// Subscriber window: line = restored total, small bars below = daily net.
+function subsChart(win, status) {
+  const W = 320, H = 130, LH = 78, BH = 34, PAD = 4;
+  const s = win.series || [];
+  const n = s.length;
+  if (!n) return `<div class="nochart">—</div>`;
+  const totals = s.map((p) => p.total).filter((v) => !isNull(v));
+  const nets = s.map((p) => p.net).filter((v) => !isNull(v));
+  const tMax = totals.length ? Math.max(...totals) : null;
+  const tMin = totals.length ? Math.min(...totals) : null;
+  const nMax = nets.length ? Math.max(1, ...nets.map(Math.abs)) : 1;
+  const xw = W / n;
+  const xOf = (i) => (i + 0.5) * xw;
+  const yOf = (v) => tMax === tMin ? PAD + (LH - 2 * PAD) / 2 : PAD + (LH - 2 * PAD) * (1 - (v - tMin) / (tMax - tMin));
+  // line path, broken at null days
+  let d = "", pen = false;
+  s.forEach((p, i) => {
+    if (isNull(p.total)) { pen = false; return; }
+    d += `${pen ? "L" : "M"}${xOf(i).toFixed(1)} ${yOf(p.total).toFixed(1)} `;
+    pen = true;
+  });
+  const zero = LH + BH / 2;
+  const bw = Math.max(0.6, xw * (n > 60 ? 0.9 : 0.6));
+  const bars = s.map((p, i) => {
+    if (isNull(p.net)) return "";
+    const h = Math.abs(p.net) / nMax * (BH / 2 - 1);
+    const y = p.net >= 0 ? zero - h : zero;
+    return `<rect x="${(xOf(i) - bw / 2).toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(h, 0.6).toFixed(1)}" fill="${p.net >= 0 ? col(status) : "var(--ink-3)"}" opacity="0.75"/>`;
   }).join("");
-  return `<svg class="bars" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="하루별 시청시간">${rects}</svg>`;
+  const hits = s.map((p, i) => `<rect class="hit" x="${(i * xw).toFixed(1)}" y="0" width="${xw.toFixed(1)}" height="${H}" fill="transparent"><title>${ymdFull(p.day)} 구독자 ${fmt(p.total)} · 순증 ${signed(p.net)}</title></rect>`).join("");
+  const dots = n <= 31 ? s.map((p, i) => isNull(p.total) ? "" : `<circle cx="${xOf(i).toFixed(1)}" cy="${yOf(p.total).toFixed(1)}" r="2.6" fill="${col(status)}"/>`).join("") : "";
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="구독자 추이">
+    <line x1="0" y1="${zero}" x2="${W}" y2="${zero}" stroke="var(--rule)" stroke-width="0.6"/>
+    ${bars}<path d="${d.trim()}" fill="none" stroke="${col(status)}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>${dots}${hits}</svg>
+    <div class="axis"><span>${ymd(win.start)}</span><span class="n">최고 ${fmt(tMax)}</span><span>${ymd(win.end)}</span></div>`;
 }
 
-function changeSentence(m) {
-  if (isNull(m.pct)) return "";
-  if (m.pct === 0) return "그대로";
-  return `${fmt(Math.abs(m.pct), Math.abs(m.pct) < 10 ? 1 : 0)}% ${m.pct > 0 ? "늘었어요" : "줄었어요"}`;
+// Watch window: daily hours bars.
+function hoursChart(win, status) {
+  const W = 320, H = 90, PAD = 2;
+  const s = win.series || [];
+  const n = s.length;
+  if (!n) return `<div class="nochart">—</div>`;
+  const vals = s.map((p) => p.hours).filter((v) => !isNull(v));
+  const max = vals.length ? Math.max(...vals) : 0;
+  const xw = W / n;
+  const gap = n > 60 ? 0.2 : n > 14 ? 1.5 : 4;
+  const bw = Math.max(0.6, xw - gap);
+  const rects = s.map((p, i) => {
+    const x = (i * xw + gap / 2).toFixed(1);
+    if (isNull(p.hours)) return `<rect x="${x}" y="${H - 2}" width="${bw.toFixed(1)}" height="2" fill="var(--rule)"><title>${ymdFull(p.day)} 자료 없음</title></rect>`;
+    const h = max ? Math.max(1, p.hours / max * (H - PAD)) : 1;
+    return `<rect x="${x}" y="${(H - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" fill="${col(status)}"><title>${ymdFull(p.day)} ${fmt(p.hours, 1)}시간</title></rect>`;
+  }).join("");
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="하루별 시청시간">${rects}</svg>
+    <div class="axis"><span>${ymd(win.start)}</span><span class="n">최고 ${fmt(max, 1)}시간</span><span>${ymd(win.end)}</span></div>`;
 }
 
-function mini(k, m, signed) {
-  if (isNull(m.cur)) return `<div><span class="k">${k}</span><span class="val">—</span></div>`;
-  const v = signed && m.cur > 0 ? `+${fmt(m.cur)}` : fmt(m.cur);
-  return `<div><span class="k">${k}</span><span class="val n">${v}</span><span class="dd n t-${m.status}">${pctText(m)}</span></div>`;
-}
-
-function renderCards(rs) {
-  const per = DATA.periods[period];
-  return `<div class="cards">${rs.map((r) => {
-    const { ch, m } = r;
-    const band = `<div class="band"><span>${STATUS[r.status].word}</span><span class="reason" title="${esc(r.why)}">${esc(r.why)}</span></div>`;
-    if (ch.collect_failed) {
-      const e = ch.errors[0];
-      return `<article class="card s-grey" id="ch-${esc(ch.key)}">${band}<div class="body"><h3>${esc(ch.display)}</h3>
-        <p>${e ? esc(e.message) + ". " : ""}꼬비에게 다시 연결해 달라고 해 주세요.</p></div></article>`;
-    }
-    const w = m.watch_hours;
-    return `<article class="card s-${r.status}" id="ch-${esc(ch.key)}">${band}<div class="body">
-      <div class="namerow"><h3 title="${esc(ch.display)}">${esc(ch.display)}</h3><span class="lbl">${period}일 시청시간</span></div>
-      <div class="big"><span class="num n">${fmt(w.cur)}</span><span class="unit">시간</span><span class="chg t-${w.status}">${changeSentence(w)}</span></div>
-      ${bars(w.spark, per.start)}
-      <div class="mini">
-        <div><span class="k">구독자</span><span class="val n">${fmt(subsOf(ch))}</span><span class="dd" style="color:var(--ink-3)">지금</span></div>
-        ${mini("순증", m.subs_net, true)}
-        ${mini("조회수", m.views)}
-      </div>
-    </div></article>`;
+// Horizontal bars: rows = [{label, value, text, color}], scaled to the largest value.
+function hbars(rows, color) {
+  const vals = rows.map((r) => r.value).filter((v) => !isNull(v));
+  const max = vals.length ? Math.max(...vals.map(Math.abs)) || 1 : 1;
+  if (!rows.length) return `<div class="nochart">—</div>`;
+  return `<div class="hbars">${rows.map((r) => {
+    const w = isNull(r.value) ? 0 : Math.abs(r.value) / max * 100;
+    return `<div class="hrow"><span class="hl">${esc(r.label)}</span>
+      <svg viewBox="0 0 100 10" preserveAspectRatio="none" role="img" aria-label="${esc(r.label)} ${esc(r.text)}"><rect x="0" y="0" width="100" height="10" fill="var(--track)"/><rect x="0" y="0" width="${w.toFixed(1)}" height="10" fill="${col(r.color || color)}"><title>${esc(r.label)} ${esc(r.text)}</title></rect></svg>
+      <span class="hv n">${esc(r.text)}</span></div>`;
   }).join("")}</div>`;
 }
 
-// ---------- lower sections ----------
-function goal(label, have, pct, target, extra, approx) {
-  if (isNull(have)) return `<div class="goal"><div class="line"><span>${label}</span><span>—</span></div></div>`;
-  const p = Math.min(100, pct || 0);
-  return `<div class="goal"><div class="line"><span>${label}</span><span><b class="n">${approx ? "약 " : ""}${fmt(have)}</b> / ${target}</span></div>
-    <div class="track" role="progressbar" aria-label="${label}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p}"><i style="width:${p}%"></i></div>
-    ${extra ? `<div class="extra">${extra}</div>` : ""}</div>`;
+// Progress bar toward a target.
+function progress(label, have, p, target, unit, color) {
+  const w = isNull(p) ? 0 : Math.min(100, p);
+  return `<div class="prog"><div class="pl"><span>${label}</span><span class="n"><b>${fmt(have, unit === "시간" ? 0 : 0)}</b> / ${target}${unit}</span></div>
+    <svg viewBox="0 0 100 12" preserveAspectRatio="none" role="progressbar" aria-label="${label}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${w.toFixed(0)}"><rect x="0" y="0" width="100" height="12" fill="var(--track)"/><rect x="0" y="0" width="${w.toFixed(1)}" height="12" fill="${col(color)}"><title>${label} ${isNull(p) ? "—" : fmt(p, 1) + "%"}</title></rect></svg>
+    <div class="pp n t-${color}">${isNull(p) ? "—" : fmt(p, 1) + "%"}</div></div>`;
 }
 
-function renderMoney(rs) {
-  const list = rs.filter((r) => !r.ch.collect_failed).map((r) => ({ ch: r.ch, mo: DATA.monetization[r.ch.key] }))
-    .sort((a, b) => ((b.mo.subs_pct || 0) + (b.mo.hours_pct || 0)) - ((a.mo.subs_pct || 0) + (a.mo.hours_pct || 0)));
-  const items = list.map(({ ch, mo }) => {
-    const done = mo.subs_pct >= 100 && mo.hours_pct >= 100;
-    const subLeft = mo.subs_pct >= 100 ? "" : `${fmt(1000 - mo.subs_exact)}명 남음`;
-    const hrsExtra = mo.official ? `공식 숫자는 ${fmt(mo.official.value)}시간 (${ymd(mo.official.as_of)} 기준)`
-      : mo.hours_pct >= 100 ? "" : `약 ${fmt(4000 - mo.hours_approx)}시간 남음`;
-    return `<div class="panel mrow"><h3>${esc(ch.display)}${done ? '<span class="done">두 조건 다 채움</span>' : ""}</h3>
-      ${goal("구독자", mo.subs_exact, mo.subs_pct, "1,000명", subLeft)}
-      ${goal("시청시간", mo.hours_approx, mo.hours_pct, "4,000시간", hrsExtra, true)}</div>`;
-  }).join("");
-  return `<section><h2>수익창출까지</h2>
-    <p class="sub">구독자 1,000명과 1년 시청시간 4,000시간을 둘 다 채워야 해요. 시청시간은 어림값이에요.</p>
-    <div class="money">${items}</div></section>`;
+// ---------- top ----------
+function route() {
+  const h = (location.hash || "#board").slice(1);
+  if (h.startsWith("ch/")) return { view: "ch", key: h.slice(3) };
+  return { view: ["board", "subs", "watch"].includes(h) ? h : "board" };
 }
 
-const HEALTH = { good: ["green", "송출 좋음"], ok: ["yellow", "송출 보통"], bad: ["red", "송출 나쁨"] };
-function renderLive() {
-  const byKey = Object.fromEntries(DATA.channels.map((c) => [c.key, c]));
-  const items = Object.entries(DATA.live).map(([k, l]) => {
-    const total = (l.hours_live || 0) + (l.hours_ondemand || 0);
-    const lp = total ? (l.hours_live / total) * 100 : 0;
-    const s = l.last_snapshot;
-    let now = `<div class="now"><span class="ttl">기록 없음</span></div>`;
-    if (s) {
-      const h = HEALTH[s.health];
-      const on = s.life_cycle === "live";
-      now = `<div class="now"><span class="onair">${on ? "방송 중" : "방송 끝남"}</span>
-        ${on && !isNull(s.concurrent) ? `<span class="n">${fmt(s.concurrent)}명 보는 중</span>` : ""}
-        ${h ? `<span class="pill s-${h[0]}">${h[1]}</span>` : ""}</div>
-        <div class="ttl">${esc(s.title || "")}, ${mdhm(s.taken_at)}에 본 모습</div>`;
+function renderTop(view) {
+  const tabs = [["board", "현황판"], ["subs", "구독자"], ["watch", "시청시간"]]
+    .map(([k, t]) => `<a href="#${k}" ${view === k ? 'aria-current="page"' : ""}>${t}</a>`).join("");
+  return `<header class="top">
+    <h1>유튜브 상황판</h1>
+    <nav class="tabs" aria-label="화면">${tabs}</nav>
+    <p class="meta n">생성 ${mdhm(DATA.generated_at)} · 기준일 ${ymd(DATA.latest_day)} · 지연 ${fmt(DATA.lag_days)}일</p>
+  </header>`;
+}
+
+// ---------- #board ----------
+function liveBlock(ch, b) {
+  if (!ch.is_live) return `<div class="live off"><span class="k">라이브</span><span class="v">없음</span></div>`;
+  const l = b.live;
+  if (!l) return `<div class="live off"><span class="k">라이브</span><span class="v">—</span></div>`;
+  if (!l.on) return `<div class="live off"><span class="k">라이브</span><span class="v">꺼짐</span><span class="at n">${mdhm(l.taken_at)}</span></div>`;
+  return `<div class="live on"><span class="k">라이브</span>
+    <span class="v on">방송 중${l.dual ? ` · 듀얼 ${fmt(l.count)}` : ""}</span>
+    <span class="n">보는 중 <b>${fmt(l.viewers)}</b>명</span>
+    <span class="n">조회 <b>${fmt(l.views)}</b></span>
+    <span class="at n">${mdhm(l.taken_at)}</span></div>`;
+}
+
+function renderBoard() {
+  const cards = DATA.order.map((key) => {
+    const ch = DATA.channels.find((c) => c.key === key) || { key, display: key, is_live: false, collect_failed: true, errors: [] };
+    const b = DATA.board[key] || { subscribers: null, h48: { cur: null, pct: null, status: "grey" }, live: null, health: "grey" };
+    const head = `<div class="namerow"><h2>${esc(ch.display)}</h2><a class="more" href="#ch/${esc(key)}">심화 ›</a></div>`;
+    if (ch.collect_failed) {
+      const e = ch.errors && ch.errors[0];
+      return `<article class="card h-grey">${head}<div class="fail n">${e ? esc(e.error) : "—"}</div></article>`;
     }
-    return `<div class="panel live"><h3>${esc(byKey[k] ? byKey[k].display : k)}</h3>${now}
-      <div class="split" role="img" aria-label="라이브 ${fmt(l.hours_live, 1)}시간, 다시보기 ${fmt(l.hours_ondemand, 1)}시간"><i class="l" style="width:${lp}%"></i><i class="o" style="width:${total ? 100 - lp : 0}%"></i></div>
-      <div class="hrs">지난 7일 중 <b class="n">${fmt(l.days_with_live)}일</b> 켰어요. 라이브 <b class="n">${fmt(l.hours_live, 1)}</b>시간, 다시보기 <b class="n">${fmt(l.hours_ondemand, 1)}</b>시간</div>
-    </div>`;
+    const h = b.h48 || {};
+    return `<article class="card h-${esc(b.health || "grey")}">${head}
+      <div class="stat"><span class="k">구독자</span><span class="num n">${fmt(b.subscribers)}</span></div>
+      <div class="stat"><span class="k">48시간 유효시청</span><span class="num n">${fmt(h.cur, 1)}${isNull(h.cur) ? "" : "<small>시간</small>"}</span><span class="chg n t-${esc(h.status || "grey")}">${pct(h.pct)}</span></div>
+      ${liveBlock(ch, b)}
+    </article>`;
   }).join("");
-  return `<section><h2>라이브</h2>
-    <p class="sub">실시간이 아니라 마지막으로 들여다본 모습이에요. 지금 상태는 꼬비에게 물어봐 주세요.</p>
-    <div class="lives">${items}</div></section>`;
+  return `<div class="grid">${cards}</div>`;
 }
 
-function renderSchedule(rs) {
-  const dates = DATA.schedule[DATA.channels[0].key].next7.map((d) => d.date);
-  const head = dates.map((d) => `<th>${ymd(d)}<span class="day">${wday(d)}</span></th>`).join("");
-  const body = rs.map(({ ch }) => {
-    const s = DATA.schedule[ch.key];
-    const cells = s.next7.map((d) => {
-      const parts = [];
-      if (d.long) parts.push(`<span class="chip long">영상 ${d.long}</span>`);
-      if (d.shorts) parts.push(`<span class="chip sh">쇼츠 ${d.shorts}</span>`);
-      return `<td>${parts.length ? `<div class="cell">${parts.join("")}</div>` : '<span class="empty">·</span>'}</td>`;
-    }).join("");
-    const lack = [];
-    const L = s.shortage.long, S = s.shortage.shorts;
-    if (L.status === "short") lack.push(`영상 ${L.need - L.have}개`);
-    if (S.status === "short") lack.push(`쇼츠 ${S.need - S.have}개`);
-    let need;
-    if (lack.length) need = `<span class="t-red" style="font-weight:700">${lack.join(", ")} 더 필요</span>`;
-    else if (L.status === "none" && S.status === "none") need = `<span class="t-grey">계획 없음</span>`;
-    else need = `<span class="t-grey">충분해요</span>`;
-    return { short: lack.length > 0, html: `<tr><td><b>${esc(ch.display)}</b><span class="need">${need}</span></td>${cells}</tr>` };
-  }).sort((a, b) => b.short - a.short).map((x) => x.html).join("");
-  return `<section><h2>앞으로 7일 예약</h2>
-    <p class="sub">예약해 둔 영상과 쇼츠예요. 모자라는 채널만 빨갛게 보여요.</p>
-    <div class="tablewrap"><table class="sched"><colgroup><col class="ch">${dates.map(() => "<col>").join("")}</colgroup>
-      <thead><tr><th>채널</th>${head}</tr></thead><tbody>${body}</tbody></table></div>
-    <div class="legend-row"><span><span class="chip long">영상</span> 긴 영상</span><span><span class="chip sh">쇼츠</span> 쇼츠</span></div>
-  </section>`;
-}
-
-function renderShorts(rs) {
-  const body = rs.map(({ ch }) => {
-    const s = DATA.shorts[ch.key];
-    return `<tr><td><b>${esc(ch.display)}</b></td><td class="n">${fmt(s.views)}</td>
-      <td class="n">${isNull(s.engaged_ratio) ? "—" : fmt(s.engaged_ratio * 100, 0) + "%"}</td>
-      <td class="n">${fmt(s.subs_per_1k, 1)}</td></tr>`;
+// ---------- #subs ----------
+function renderSubs() {
+  const cards = DATA.order.map((key) => {
+    const t = DATA.subs_trend[key];
+    const head = `<div class="namerow"><h2>${esc(nameOf(key))}</h2><a class="more" href="#ch/${esc(key)}">심화 ›</a></div>`;
+    if (!t) return `<article class="card h-grey">${head}<div class="fail">—</div></article>`;
+    const block = (w, label) => `<div class="win"><div class="wl"><span class="k">${label}</span><span class="num n t-${esc(w.status)}">${signed(w.total_net)}</span></div>${subsChart(w, w.status)}</div>`;
+    return `<article class="card h-${esc(t["365"].status)}">${head}${block(t["365"], "365일 순증")}${block(t["14"], "14일 순증")}</article>`;
   }).join("");
-  return `<section><h2>쇼츠</h2>
-    <p class="sub">지난 7일 쇼츠만 따로 봤어요.</p>
-    <div class="tablewrap shorts-wrap"><table class="shorts"><colgroup><col class="ch"><col><col><col></colgroup>
-      <thead><tr><th>채널</th><th>조회수</th><th>넘기지 않고 본 비율</th><th>1,000회당 구독</th></tr></thead><tbody>${body}</tbody></table></div>
-  </section>`;
+  return `<div class="grid">${cards}</div>`;
 }
 
-function renderFoot() {
-  return `<div class="foot">
-    <p>구독자는 지금 숫자예요. 조회수, 순증, 시청시간은 유튜브가 모아서 주는 숫자라 ${DATA.lag_days}일 늦게 들어와요(${ymd(DATA.latest_day)}까지).</p>
-    <p>쇼츠의 비율과 1,000회당 구독은 꼬비가 계산한 값이고, 수익창출 시청시간은 어림값이라 앞에 "약"을 붙였어요. 막대에 마우스를 올리면 그날 숫자가 보여요.</p>
+// ---------- #watch ----------
+function renderWatch() {
+  const seg = `<div class="seg" role="group" aria-label="기간">${["365", "28", "7"].map((p) => `<button type="button" data-win="${p}" aria-pressed="${p === watchWin}">${p}일</button>`).join("")}</div>`;
+  const cards = DATA.order.map((key) => {
+    const t = DATA.watch_trend[key];
+    const head = `<div class="namerow"><h2>${esc(nameOf(key))}</h2><a class="more" href="#ch/${esc(key)}">심화 ›</a></div>`;
+    if (!t || !t[watchWin]) return `<article class="card h-grey">${head}<div class="fail">—</div></article>`;
+    const w = t[watchWin];
+    return `<article class="card h-${esc(w.status)}">${head}
+      <div class="stat"><span class="k">${watchWin}일 유효시청</span><span class="num n t-${esc(w.status)}">${fmt(w.total, 1)}${isNull(w.total) ? "" : "<small>시간</small>"}</span></div>
+      ${hoursChart(w, w.status)}</article>`;
+  }).join("");
+  return `<div class="segrow">${seg}</div><div class="grid">${cards}</div>`;
+}
+
+// ---------- #ch/<key> ----------
+const AGE = (a) => a.replace("age", "").replace("-", "~").replace(/~$/, "+");
+const GENDER = { female: "여", male: "남", user_specified: "기타" };
+const SRC = [["shorts", "쇼츠"], ["vod", "롱폼"], ["live", "라이브"], ["other", "기타"]];
+
+function audienceBlock(title, seg) {
+  const ag = (seg.age_gender || []).slice(0, 8).map((r) => ({ label: `${AGE(r.age)} ${GENDER[r.gender] || r.gender}`, value: r.pct, text: `${fmt(r.pct, 1)}%` }));
+  const co = (seg.country || []).slice(0, 5).map((r) => ({ label: r.country, value: r.minutes, text: `${fmt(r.minutes / 60, 1)}시간` }));
+  return `<section class="panel"><h3>${title}${seg.as_of ? `<span class="asof n">${ymd(seg.as_of)} 기준</span>` : ""}</h3>
+    <div class="cols">
+      <div><h4>성별 · 나이</h4>${hbars(ag, "purple")}</div>
+      <div><h4>지역 Top 5</h4>${hbars(co, "purple")}</div>
+      <div><h4>시청 시간대</h4><p class="peak">${seg.peak_hours ? esc(seg.peak_hours) : "—"}</p></div>
+    </div></section>`;
+}
+
+function videoList(title, list) {
+  const items = (list || []).slice(0, 3).map((v) => `<li class="vid">
+      ${v.thumb ? `<img src="${esc(v.thumb)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'thumb'}))">` : `<span class="thumb"></span>`}
+      <div class="vi"><span class="vt">${esc(v.title || v.video_id)}</span>
+      <span class="vm n">${ymd(v.published_at)} · ${fmt(v.hours, 1)}시간 · 조회 ${fmt(v.views)}</span></div></li>`).join("");
+  return `<section class="panel"><h3>${title}<span class="asof">28일</span></h3>${items ? `<ul class="vids">${items}</ul>` : `<div class="nochart">—</div>`}</section>`;
+}
+
+function renderChannel(key) {
+  const ch = DATA.channels.find((c) => c.key === key);
+  const d = DATA.detail[key];
+  const back = `<a class="back" href="#board">‹ 현황판</a>`;
+  if (!ch || !d) return `${back}<h2 class="chname">${esc(nameOf(key))}</h2><div class="panel fail">—</div>`;
+  const b = DATA.board[key] || {};
+  const health = b.health || "grey";
+  const m = d.monet || {};
+  const monet = `<section class="panel"><h3>수익창출${m.monetized ? `<span class="tag t-red">수익창출 중</span>` : ""}</h3>
+    ${progress("구독자", m.subs, m.subs_pct, "1,000", "명", health)}
+    ${progress("시청시간", m.hours, m.hours_pct, "4,000", "시간", health)}</section>`;
+  const aud = d.audience || { subscribers: {}, viewers: {} };
+  const ss = d.subs_sources || {};
+  const src = SRC.map(([k, label]) => ({ label, value: ss[k], text: isNull(ss[k]) ? "—" : signed(ss[k]), color: "red" }))
+    .concat([{ label: "이탈", value: isNull(ss.lost) ? null : -ss.lost, text: isNull(ss.lost) ? "—" : "−" + fmt(ss.lost), color: "blue" }]);
+  const genres = (d.genres || []).slice(0, 5).map((g) => ({ label: g.name, value: g.hours, text: `≈ ${fmt(g.hours, 1)}시간 · ${fmt(g.share, 0)}%` }));
+  return `${back}<h2 class="chname">${esc(ch.display)}</h2><div class="stack">
+    ${monet}
+    ${audienceBlock("구독자 현황", aud.subscribers || {})}
+    ${audienceBlock("시청자 현황", aud.viewers || {})}
+    ${videoList("롱폼 상위 3", d.top_long)}
+    ${videoList("라이브 상위 3", d.top_live)}
+    <section class="panel"><h3>구독 유입<span class="asof">${fmt(ss.days || 28)}일</span></h3>${hbars(src)}</section>
+    <section class="panel"><h3>음악 장르<span class="asof">28일 · 재생목록</span></h3>${hbars(genres, "purple")}</section>
   </div>`;
 }
 
@@ -274,32 +262,32 @@ function renderBands() {
 
 function renderErrors() {
   if (!DATA.errors || !DATA.errors.length) return "";
-  const names = Object.fromEntries(DATA.channels.map((c) => [c.key, c.display]));
-  const items = DATA.errors.map((e) => `<li>${esc(names[e.channel] || e.channel)}: ${esc(e.stage)} ${esc(e.error)}${e.run_started_at ? ` (${esc(mdhm(e.run_started_at))})` : ""}</li>`).join("");
-  return `<section><h2>숫자를 못 가져온 곳</h2><ul class="errors">${items}</ul></section>`;
+  const items = DATA.errors.map((e) => `<li>${esc(nameOf(e.channel))} · ${esc(e.stage || "")} ${esc(e.error || "")}${e.run_started_at ? ` <span class="n">${esc(mdhm(e.run_started_at))}</span>` : ""}</li>`).join("");
+  return `<section class="errs"><h3>오류</h3><ul class="errors">${items}</ul></section>`;
 }
 
 function render() {
-  const rs = rows();
-  app.innerHTML = renderBands() + "<main>" + renderTop(rs) + renderCards(rs) + renderMoney(rs) + renderLive() + renderSchedule(rs) + renderShorts(rs) + renderErrors() + renderFoot() + "</main>";
-  app.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => {
+  if (!DATA) return;
+  const r = route();
+  let body;
+  if (r.view === "ch") body = renderChannel(r.key);
+  else if (r.view === "subs") body = renderSubs();
+  else if (r.view === "watch") body = renderWatch();
+  else body = renderBoard();
+  app.innerHTML = renderBands() + `<main>${renderTop(r.view)}${body}${renderErrors()}</main>`;
+  app.querySelectorAll(".seg button").forEach((btn) => btn.addEventListener("click", () => {
     const y = window.scrollY;
-    period = b.dataset.period;
+    watchWin = btn.dataset.win;
+    store("set", WIN_KEY, watchWin);
     render();
     window.scrollTo(0, y);
   }));
+  if (r.view === "ch") window.scrollTo(0, 0);
 }
+
+window.addEventListener("hashchange", render);
 
 // ---------- password flow ----------
-function store(op, value) {
-  try {
-    if (op === "get") return localStorage.getItem(STORE_KEY);
-    if (op === "set") localStorage.setItem(STORE_KEY, value);
-    if (op === "del") localStorage.removeItem(STORE_KEY);
-  } catch (e) { /* storage may be blocked; page still works */ }
-  return null;
-}
-
 async function tryDecrypt(envelope, password) {
   try {
     return JSON.parse(await decryptEnvelope(envelope, password));
@@ -320,27 +308,29 @@ function showForm(envelope, wrong) {
     const pw = document.getElementById("pw").value;
     const data = await tryDecrypt(envelope, pw);
     if (data) {
-      store("set", pw);
+      store("set", STORE_KEY, pw);
       DATA = data;
       render();
     } else {
-      store("del");
+      store("del", STORE_KEY);
       showForm(envelope, true);
     }
   });
 }
 
 async function main() {
+  const w = store("get", WIN_KEY);
+  if (["365", "28", "7"].includes(w)) watchWin = w;
   let res = null;
   try { res = await fetch("data.enc", { cache: "no-store" }); } catch (e) { res = null; }
   if (res && res.ok) {
     let envelope;
     try { envelope = await res.json(); } catch (e) { app.textContent = "데이터 파일을 읽을 수 없어요."; return; }
-    const saved = store("get");
+    const saved = store("get", STORE_KEY);
     if (saved) {
       const data = await tryDecrypt(envelope, saved);
       if (data) { DATA = data; render(); return; }
-      store("del");
+      store("del", STORE_KEY);
     }
     showForm(envelope, false);
     return;

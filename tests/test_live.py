@@ -39,25 +39,28 @@ def test_live_none_row_when_no_broadcast():
     assert rows == [{
         "channel_key": "soombi", "taken_at": NOW, "broadcast_id": "none", "life_cycle": "none",
         "concurrent": None, "health": None, "stream_status": None, "actual_start": None,
-        "title": None,
+        "title": None, "views": None,
     }]
     assert data.calls == []
 
 
-def _video(live_details):
-    return {"id": "bcast0001", "liveStreamingDetails": live_details}
+def _video(live_details, stats=None):
+    return {"id": "bcast0001", "liveStreamingDetails": live_details,
+            **({"statistics": stats} if stats else {})}
 
 
 def test_live_active_row_from_fixtures():
     health = fixture("livestreams_status.json")["items"][0]["status"]
     data = FakeData(fixture("broadcasts_active.json")["items"],
-                    [_video({"actualStartTime": "2026-11-07T01:00:00Z", "concurrentViewers": "42"})],
+                    [_video({"actualStartTime": "2026-11-07T01:00:00Z", "concurrentViewers": "42"},
+                            {"viewCount": "1234"})],
                     health)
     rows = live.collect(ctx(data), TODAY, TODAY)["yt_live_snapshot"]
     assert rows == [{
         "channel_key": "soombi", "taken_at": NOW, "broadcast_id": "bcast0001",
         "life_cycle": "live", "concurrent": 42, "health": "good", "stream_status": "active",
         "actual_start": datetime(2026, 11, 7, 1, tzinfo=timezone.utc), "title": "Live now",
+        "views": 1234,
     }]
     assert data.calls == [("videos", ["bcast0001"]), ("stream_health", "strm0001")]
 
@@ -86,7 +89,7 @@ def test_live_403_yields_none_row():
     assert rows == [{
         "channel_key": "soombi", "taken_at": NOW, "broadcast_id": "none", "life_cycle": "none",
         "concurrent": None, "health": None, "stream_status": None, "actual_start": None,
-        "title": None,
+        "title": None, "views": None,
     }]
 
 
@@ -126,3 +129,8 @@ def test_live_two_broadcasts_two_rows():
     rows = live.collect(ctx(data), TODAY, TODAY)["yt_live_snapshot"]
     assert [r["broadcast_id"] for r in rows] == ["bcast0001", "bcast0002"]
     assert len({(r["channel_key"], r["taken_at"], r["broadcast_id"]) for r in rows}) == 2
+
+
+def test_live_views_none_without_statistics():
+    data = FakeData(fixture("broadcasts_active.json")["items"], [_video({"concurrentViewers": "3"})])
+    assert live.collect(ctx(data), TODAY, TODAY)["yt_live_snapshot"][0]["views"] is None

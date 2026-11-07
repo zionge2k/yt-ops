@@ -23,9 +23,16 @@ PRIMARY_KEYS: dict[str, list[str]] = {
     "yt_video_daily": ["video_id", "day"],
     "yt_schedule": ["channel_key", "video_id"],
     "yt_live_snapshot": ["channel_key", "taken_at", "broadcast_id"],
+    "yt_audience": ["channel_key", "as_of", "segment", "content", "dim", "key"],
+    "yt_playlist": ["playlist_id"],
+    "yt_playlist_item": ["playlist_id", "video_id"],
 }
-REPLACE_PER_CHANNEL = ("yt_schedule",)  # a run finding nothing must clear the old rows
+# a run finding nothing must clear the old rows (deleted schedules / playlists must not linger)
+REPLACE_PER_CHANNEL = ("yt_schedule", "yt_playlist", "yt_playlist_item")
 KEEP: dict[str, tuple[str, ...]] = {"yt_video": ("first_seen_at",)}
+# Analytics query 2 (day x creatorContentType, <=5 types) must stay under its 1,000-row cap,
+# so a long channel_daily window is collected in slices of this many days.
+CHANNEL_DAILY_SLICE = 180
 
 
 @dataclass
@@ -78,10 +85,34 @@ def _error(key: str, stage: str, e: Exception) -> dict:
     return {"channel": key, "stage": stage, "error": type(e).__name__, "message": str(e)[:200]}
 
 
+def slices(start: date, end: date, size: int = CHANNEL_DAILY_SLICE) -> list[tuple[date, date]]:
+    """Split [start, end] into consecutive inclusive windows of at most `size` days."""
+    out = []
+    lo = start
+    while lo <= end:
+        hi = min(end, lo + timedelta(days=size - 1))
+        out.append((lo, hi))
+        lo = hi + timedelta(days=1)
+    return out
+
+
+def _collect_channel_daily(module, ctx, start, end):
+    merged: dict[str, list[dict]] = {}
+    for i, (lo, hi) in enumerate(slices(start, end)):
+        out = module.collect(ctx, lo, hi)
+        for table, rows in out.items():
+            if table != "yt_channel_daily" and i > 0:
+                continue  # yearly minutes do not depend on the slice; keep the first copy only
+            merged.setdefault(table, []).extend(rows)
+    return merged
+
+
 def _run_collector(name, module, ctx, start, end, video_start, conn, current_rows=()):
     if name == "subs":
         baseline, daily, latest_day = subs_inputs(conn, ctx.key, current_rows=current_rows)
         return {"yt_subs_snapshot": [subs.snapshot_row(ctx, ctx.data.channel_stats(), baseline, daily, latest_day)]}
+    if name == "channel_daily":
+        return _collect_channel_daily(module, ctx, start, end)
     return module.collect(ctx, video_start if name == "video_daily" else start, end)
 
 
@@ -93,7 +124,13 @@ def run_collect(
     dry_run: bool,
     conn=None,
     today: date | None = None,
+    only: list[str] | tuple[str, ...] | None = None,
 ) -> RunResult:
+    """only: restrict to these collector names (e.g. ["live"]); None runs every collector."""
+    collectors = COLLECTORS if only is None else [(n, m) for n, m in COLLECTORS if n in set(only)]
+    unknown = set(only or ()) - {n for n, _ in COLLECTORS}
+    if unknown:
+        raise ValueError(f"unknown collector(s): {', '.join(sorted(unknown))}")
     started_at = datetime.now(timezone.utc)
     # calendar "today" is the Seoul date, same as render/commands
     today = today or datetime.now(ZoneInfo("Asia/Seoul")).date()
@@ -113,7 +150,7 @@ def run_collect(
         except Exception as e:  # auth / registry failure: skip this channel only
             result.errors.append(_error(key, "client", e))
             continue
-        for name, module in COLLECTORS:
+        for name, module in collectors:
             try:
                 out = _run_collector(name, module, ctx, start, end, video_start, db, collected.get("yt_channel_daily", ()))
             except Exception as e:

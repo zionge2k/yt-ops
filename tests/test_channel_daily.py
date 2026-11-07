@@ -68,12 +68,15 @@ def test_channel_daily_merges_three_queries():
         "min_lol_live": 480, "min_lol_ondemand": 250,
         "subs_gained": 4, "subs_lost": 1,
         "views_shorts": 60, "engaged_views_shorts": 50, "subs_gained_shorts": 3,
+        "subs_gained_vod": 1, "subs_gained_live": 0,
         "collected_at": NOW,
     }
     d2 = rows[1]
     assert (d2["views"], d2["subs_gained"], d2["subs_lost"]) == (80, 0, 2)
     assert (d2["min_shorts"], d2["min_live"], d2["min_vod"]) == (12, 0, 0)
     assert (d2["min_lol_live"], d2["min_lol_ondemand"]) == (0, 12)
+    # day present in query 2 but no vod/live rows: a true 0, not None
+    assert (d2["subs_gained_shorts"], d2["subs_gained_vod"], d2["subs_gained_live"]) == (0, 0, 0)
 
 
 def test_channel_daily_missing_query_leaves_none():
@@ -84,7 +87,8 @@ def test_channel_daily_missing_query_leaves_none():
     d2 = rows[1]
     assert d2["views"] == 80 and d2["subs_lost"] == 2
     for col in ("min_shorts", "min_live", "min_vod", "min_unspec", "views_shorts",
-                "engaged_views_shorts", "subs_gained_shorts", "min_lol_live", "min_lol_ondemand"):
+                "engaged_views_shorts", "subs_gained_shorts", "subs_gained_vod", "subs_gained_live",
+                "min_lol_live", "min_lol_ondemand"):
         assert d2[col] is None, col
     assert rows[0]["min_lol_live"] is None
 
