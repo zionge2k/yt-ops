@@ -19,6 +19,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: write  # 아래 keep-alive 단계가 workflow enable 을 호출하는 데 필요
 
 jobs:
   run:
@@ -90,6 +91,15 @@ jobs:
       - name: 배포
         id: deploy
         uses: actions/deploy-pages@v4
+
+      # GitHub 은 저장소에 60일간 커밋이 없으면 schedule 실행을 조용히 끈다.
+      # 이 저장소는 매일 돌아도 커밋을 만들지 않으므로, 매 실행마다 워크플로를 다시 켜서 타이머를 되돌린다.
+      # 아래 실패 알림 단계(exit 1)보다 앞에 둬서 수집이 실패한 날에도 실행되게 한다.
+      - name: 예약 실행 유지 (60일 규칙)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/daily.yml/enable"
 
       - name: 수집 오류 알림
         if: steps.collect.outcome == 'failure'

@@ -79,9 +79,20 @@ function metricRow(label, icon, valueText, m, unit) {
 }
 
 // ---------- sections ----------
+const STALE_HOURS = 48;
+/** Whole days since generated_at when older than 48 hours, else 0 (fresh or unparsable). */
+function staleDays(generatedAtIso, nowMs) {
+  const t = Date.parse(generatedAtIso);
+  if (Number.isNaN(t)) return 0;
+  const hours = (nowMs - t) / 3600000;
+  return hours > STALE_HOURS ? Math.floor(hours / 24) : 0;
+}
+
 function renderTop() {
+  const stale = sampleMode ? 0 : staleDays(DATA.generated_at, Date.now());
+  const staleBand = stale ? `<div class="stale-band">상황판이 ${stale}일째 갱신되지 않았어요 — 꼬비에게 알려 주세요</div>` : "";
   const lag = isNull(DATA.lag_days) ? "—" : DATA.lag_days;
-  return `${sampleMode ? '<div class="sample-band">예시 데이터 (data.enc 없음)</div>' : ""}
+  return `${sampleMode ? '<div class="sample-band">예시 데이터 (data.enc 없음)</div>' : ""}${staleBand}
   <div class="topbar">
     <div>집계 기준일 ${esc(DATA.latest_day || "—")} (${esc(lag)}일 지연) · 화면 생성 ${esc(kstFull(DATA.generated_at))}</div>
     <div class="legend">🔵실측 ⏳집계 ➗계산 ≈근사</div>

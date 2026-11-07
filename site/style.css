@@ -17,6 +17,7 @@ body { margin: 0; background: var(--bg); color: var(--text); font-size: 18px; li
   font-family: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; }
 .topbar { position: sticky; top: 0; z-index: 5; background: var(--topbar); border-bottom: 1px solid var(--line); padding: 8px 16px; }
 .topbar .legend { color: var(--muted); font-size: 18px; }
+.stale-band { background: var(--warn-bg); color: var(--warn-text); padding: 8px 16px; font-weight: 700; text-align: center; }
 .sample-band { background: var(--warn-bg); color: var(--warn-text); padding: 8px 16px; font-weight: 700; text-align: center; }
 main { max-width: 1200px; margin: 0 auto; padding: 8px 16px 48px; }
 h2 { font-size: 24px; margin: 32px 0 12px; }
