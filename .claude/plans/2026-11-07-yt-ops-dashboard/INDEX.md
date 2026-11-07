@@ -18,6 +18,8 @@ Status: active
 - [x] code-review 2회 + 수정 회차 2·3 (유령 예약 · 403 사유 · 라이브 PK · 백필 185 · store 실패 표시 · 60일 자동중단 대비 · 채널별 실패 판정) — 112 테스트
 - [x] Phase 0 (11/07 꼬비 실행: 금고 재백업 · 공개 저장소 `zionge2k/yt-ops` · Secrets 4개 · Pages · 스키마 적용). Reporting API 켜기만 형아 몫으로 남음
 - [x] Task 10 통합 검증: 백필 185일 8채널 errors=0 · collect 2회 멱등 · 11/1~2 값 PDF/실측 일치 · Actions 수동 실행 성공 · Pages 비밀번호 열림 확인(11/07 16:26)
+- [x] 화면 2판 결정(11/07 저녁): 카드형 · 유동 그리드(최대 4열) · 상태 말 「떨어짐/흔들림/오름」 · 7일 비교는 그 전 4주 평균(커밋 98b035f) · 채널 찾기 줄 제거
+- [ ] 화면 2판을 site/ 에 옮겨 push → Actions 수동 실행 → 새 비밀번호로 열림 확인(진행 중)
 - [ ] 남은 것: 형아 Reporting API 켜기 → `reportTypes.list` 확인 · `config/channels.toml` 채널별 업로드 계획 숫자 채우기(지금은 전부 '계획 없음') · 숨비 폰으로 열어 보기 · uploads 중복 수정 push
 
 ## Resume Point
