@@ -7,13 +7,13 @@ Status: active
 
 - [x] Task 1 뼈대 · 레지스트리 · 인증 경로
 - [x] Task 2 Analytics · Data 클라이언트
-- [ ] Task 3 수집기 ① 채널 일별 · 구독자
-- [ ] Task 4 수집기 ② 영상 · 예약 · 라이브
-- [ ] Task 5 스키마 · 저장소 · CLI
-- [ ] Task 6 렌더러
-- [ ] Task 7 암호화 · 정적 페이지
-- [ ] Task 8 워크플로 · 문서
-- [ ] Task 9 요청 시 CLI
+- [x] Task 3 수집기 ① 채널 일별 · 구독자
+- [x] Task 4 수집기 ② 영상 · 예약 · 라이브
+- [x] Task 5 스키마 · 저장소 · CLI
+- [x] Task 6 렌더러
+- [x] Task 7 암호화 · 정적 페이지
+- [x] Task 8 워크플로 · 문서
+- [x] Task 9 요청 시 CLI
 - [ ] Task 10 통합 검증 (형아 Phase 0 뒤)
 
 ## Resume Point

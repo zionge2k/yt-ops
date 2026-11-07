@@ -104,7 +104,7 @@
 - Produces: `context.CollectContext(key: str, channel: Channel, analytics: AnalyticsClient, data: DataClient, today: date, collected_at: datetime)`; 각 수집기 모듈은 `collect(ctx, start: date, end: date) -> dict[str, list[dict]]` (표 이름 → 행). `collect/__init__.py` 의 `COLLECTORS: list[tuple[str, module]]` 순서 `channel_daily, subs, video, video_daily, schedule, live`(뒤 둘은 Task 4 에서 추가).
 - Produces 행 모양 `yt_channel_daily`: `channel_key, day, views, min_shorts, min_live, min_vod, min_unspec, min_lol_live, min_lol_ondemand, subs_gained, subs_lost, views_shorts, engaged_views_shorts, subs_gained_shorts, collected_at`. 세 쿼리(스펙 "수집 쿼리" 1 · 2 · 3) 결과를 `day` 로 합친다. 어떤 쿼리에 없는 날은 그 열이 `None`(0 아님).
 - Produces 행 `yt_subs_snapshot`: `channel_key, taken_on, api_subscribers, exact_subscribers(None 가능), monetized`.
-- Produces `subscribers.exact_subscribers(baseline: tuple[date, int] | None, daily: list[tuple[date, int, int]], latest_day: date | None, api_now: int) -> int | None`: 기준점(1,000 미만일 때 저장한 정확값과 날짜)이 있으면 기준일 다음날부터 `latest_day` 까지 (gained−lost) 누적, 그 뒤 날짜는 모름 → 그대로 돌려줌. 기준점이 없고 `api_now < 1000` 이면 `api_now`(정확). 기준점 없고 ≥1000 이면 `None`.
+- Produces `subscribers.exact_subscribers(baseline: tuple[date, int] | None, daily: list[tuple[date, int, int]], latest_day: date | None, api_now: int) -> int | None`: `api_now < 1000` 이면 기준점과 무관하게 `api_now`(정확, 최종 리뷰 규칙). ≥1000 이고 기준점이 있으면 기준일부터(포함) `latest_day` 까지 (gained−lost) 누적. 기준점 없고 ≥1000 이면 `None`.
 - Produces `channel_daily.yearly_minutes(ctx) -> dict` (스펙 쿼리 5 수정: 최근 365일 `dims=creatorContentType` 단독 — `month` 차원은 월 경계 정렬을 요구해 400, 2026-11-07 실측 → `{"min_live":…, "min_vod":…, "min_shorts":…, "start":…, "end":…}`), `yt_channel_meta` 가 아니라 render 가 쓰도록 `yt_channel_daily` 와 별개로 `yt_yearly_minutes` 표 행 1개(`channel_key, as_of, min_live, min_vod, min_shorts, start_day, end_day`) 를 `channel_daily.collect` 결과에 포함한다.
 
 - [ ] **Step 1: 실패 테스트** `test_channel_daily_merges_three_queries`(fixture 3개 → 2행, 열 값 검증), `test_channel_daily_missing_query_leaves_none`, `test_subs_snapshot_row`, `test_exact_subscribers_after_rounding`(기준점 (11-01, 998), daily 11-02 +5/−1, 11-03 +3/0, latest 11-03, api_now 1000 → 1005), `test_exact_subscribers_no_baseline_under_1000`, `test_exact_subscribers_no_baseline_over_1000_is_none`.
@@ -139,8 +139,8 @@
 **Interfaces:**
 - Produces 표(스펙 "Supabase 스키마" 7개 + `yt_schedule` + `yt_yearly_minutes`), 모두 `enable row level security`, 정책 없음. PK: `yt_channel_daily(channel_key, day)`, `yt_subs_snapshot(channel_key, taken_on)`, `yt_video(video_id)`, `yt_video_daily(video_id, day)`, `yt_live_snapshot(channel_key, taken_at)`, `yt_schedule(channel_key, video_id)`, `yt_yearly_minutes(channel_key, as_of)`, `yt_manual(channel_key, field)`, `yt_run_log(run_id)`.
 - Produces `store.connect()` (`.env` 의 `SUPABASE_DB_URL`, psycopg autocommit — `music_supabase.py` 패턴), `store.upsert(conn, table: str, rows: list[dict], pk: list[str], keep: tuple[str, ...] = ()) -> int` (`keep` 열은 `on conflict` 때 기존값 유지, 예: `first_seen_at`), `store.fetch(conn, sql: str, params=()) -> list[dict]`, `store.apply_schema(conn, path)`.
-- Produces `runner.run_collect(keys: list[str], *, days: int = 10, video_days: int = 10, dry_run: bool, conn=None, today=None) -> RunResult(run_id, started_at, latest_day, errors: list[dict], counts: dict[str, int])`: 채널마다 ctx 를 만들고 COLLECTORS 를 돌리며, 한 채널의 예외는 `errors` 에 `{"channel": key, "stage": name, "error": type(e).__name__, "message": str(e)[:200]}` 로 남기고 계속. `dry_run` 이면 표별 행 수와 표본 2행을 stdout 에 찍고 DB 는 만지지 않음. 끝에 `yt_run_log` 1행. `backfill` 은 `days=90, video_days=28`.
-- Produces CLI: `ytops collect [--channel K|--all] [--days N] [--dry-run]`, `ytops backfill [--days 90] [--channel|--all]`, `ytops status`(표별 행 수 · 마지막 run), `ytops schema --apply`(승인 뒤 실행용, 실행 전 확인 문구 출력).
+- Produces `runner.run_collect(keys: list[str], *, days: int = 10, video_days: int = 10, dry_run: bool, conn=None, today=None) -> RunResult(run_id, started_at, latest_day, errors: list[dict], counts: dict[str, int])`: 채널마다 ctx 를 만들고 COLLECTORS 를 돌리며, 한 채널의 예외는 `errors` 에 `{"channel": key, "stage": name, "error": type(e).__name__, "message": str(e)[:200]}` 로 남기고 계속. `dry_run` 이면 표별 행 수와 표본 2행을 stdout 에 찍고 DB 는 만지지 않음. 끝에 `yt_run_log` 1행. `backfill` 은 `days=180, video_days=28`(최종 리뷰 규칙: 90일 비교에 180일 이력 필요).
+- Produces CLI: `ytops collect [--channel K|--all] [--days N] [--dry-run]`, `ytops backfill [--days 180] [--channel|--all]`, `ytops status`(표별 행 수 · 마지막 run), `ytops schema --apply`(승인 뒤 실행용, 실행 전 확인 문구 출력).
 
 - [ ] **Step 1: 실패 테스트** `test_upsert_sql_has_on_conflict_and_keep`(가짜 cursor 로 생성된 SQL 문자열 검사), `test_collect_all_continues_after_channel_error`(두 채널 중 하나의 analytics 가 raise → errors 1개, 다른 채널 counts > 0), `test_dry_run_touches_no_db`(conn 이 None 인데도 끝남), `test_cli_resolves_alias`(`--channel chalna` → runner 에 `soombi`).
 - [ ] **Step 2: 실패 확인** → **Step 3: 구현** → **Step 4: 통과**
@@ -232,7 +232,7 @@
 ### Task 10: 통합 검증 (형아 Phase 0 완료 뒤, 컨트롤러가 직접)
 
 - [ ] `ytops schema --apply` (승인 뒤) → `ytops status`
-- [ ] `ytops backfill --days 90 --all` → `collect --all` 2회 → 표별 행 수 동일(멱등)
+- [ ] `ytops backfill --days 180 --all` → `collect --all` 2회 → 표별 행 수 동일(멱등)
 - [ ] `ytops render --out /tmp/d.json` → 스펙 "검증" 절 대조값(BACK THEN 쇼츠 순증 +40 · liveStream 133.6h, pli.wav 쇼츠 +120, 11/1~2) 과 ±3%
-- [ ] GitHub 저장소 push → `workflow_dispatch(backfill_days=90)` → 로그에 토큰 없음 → Pages 열림 → 숨비 폰 확인
+- [ ] GitHub 저장소 push → `workflow_dispatch(backfill_days=180)` → 로그에 토큰 없음 → Pages 열림 → 숨비 폰 확인
 - [ ] 허브 `map.md` · `CHANGES.md` 한 줄, `ai-learnings.md`, 플랜 `INDEX.md` 완료 처리, 메모리 갱신
