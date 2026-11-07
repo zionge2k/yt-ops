@@ -16,12 +16,14 @@ Status: active
 - [x] Task 9 요청 시 CLI
 - [x] 최종 전체 리뷰(opus) + 수정 회차 1회 — 101 테스트 통과
 - [x] code-review 2회 + 수정 회차 2·3 (유령 예약 · 403 사유 · 라이브 PK · 백필 185 · store 실패 표시 · 60일 자동중단 대비 · 채널별 실패 판정) — 112 테스트
-- [ ] Task 10 통합 검증 (형아 Phase 0 뒤)
+- [x] Phase 0 (11/07 꼬비 실행: 금고 재백업 · 공개 저장소 `zionge2k/yt-ops` · Secrets 4개 · Pages · 스키마 적용). Reporting API 켜기만 형아 몫으로 남음
+- [x] Task 10 통합 검증: 백필 185일 8채널 errors=0 · collect 2회 멱등 · 11/1~2 값 PDF/실측 일치 · Actions 수동 실행 성공 · Pages 비밀번호 열림 확인(11/07 16:26)
+- [ ] 남은 것: 형아 Reporting API 켜기 → `reportTypes.list` 확인 · `config/channels.toml` 채널별 업로드 계획 숫자 채우기(지금은 전부 '계획 없음') · 숨비 폰으로 열어 보기 · uploads 중복 수정 push
 
 ## Resume Point
 
 - 파일: `plan.md`(Task 10 절) · `docs/runbook.md`(형아 Phase 0 체크리스트 ①)
-- 단계: 코드 완성, 로컬 `main` 에 커밋됨. **원격 저장소 없음.** 형아 Phase 0 대기:
+- 단계: **운영 시작됨(2026-11-07).** 매일 KST 09:30 자동 수집 · 화면 https://zionge2k.github.io/yt-ops/ (비밀번호는 Actions Secret `DASH_PASSWORD`, 형아·숨비 공유). 아래 Phase 0 목록은 11/07 에 1 빼고 완료:
   1. GCP 543780518761 에서 YouTube Reporting API 켜기 → 꼬비가 `reportTypes.list` 로 reach 보고서 실존 확인(2차 CTR 범위 확정)
   2. `~/kkobi/yt-channels-vault/scripts/backup.sh` 재실행(analytics.json 포함) + push
   3. GitHub 공개 저장소 `zionge2k/yt-ops` 생성 · Secrets 4개 · Pages Source=Actions → `git remote add origin … && git push -u origin main`
