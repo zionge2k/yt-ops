@@ -7,6 +7,8 @@ from ytops.collect.context import CollectContext
 
 _BY_TYPE = {"shorts": "min_shorts", "liveStream": "min_live", "videoOnDemand": "min_vod"}
 _BY_LOL = {"LIVE": "min_lol_live", "ON_DEMAND": "min_lol_ondemand"}
+# Per-request cap; 90 days x 4 content types stays well below it (TruncationError otherwise).
+MAX_ROWS = 1000
 _MINUTES = "estimatedMinutesWatched"
 
 _COLS = (
@@ -28,14 +30,14 @@ def collect(ctx: CollectContext, start: date, end: date) -> dict[str, list[dict]
         return days.setdefault(day, dict.fromkeys(_COLS))
 
     # Query 1: totals per day
-    for r in ctx.analytics.query(start, end, "day", "views,subscribersGained,subscribersLost"):
+    for r in ctx.analytics.query(start, end, "day", "views,subscribersGained,subscribersLost", max_results=MAX_ROWS):
         d = row(_day(r["day"]))
         d["views"], d["subs_gained"], d["subs_lost"] = r["views"], r["subscribersGained"], r["subscribersLost"]
 
     # Query 2: per content type (day present => absent types are a true 0)
     for r in ctx.analytics.query(
         start, end, "day,creatorContentType",
-        f"{_MINUTES},views,engagedViews,subscribersGained",
+        f"{_MINUTES},views,engagedViews,subscribersGained", max_results=MAX_ROWS,
     ):
         d = row(_day(r["day"]))
         for col in ("min_shorts", "min_live", "min_vod", "min_unspec",
@@ -48,7 +50,7 @@ def collect(ctx: CollectContext, start: date, end: date) -> dict[str, list[dict]
             d["subs_gained_shorts"] += r["subscribersGained"]
 
     # Query 3: live vs on-demand minutes
-    for r in ctx.analytics.query(start, end, "day,liveOrOnDemand", _MINUTES):
+    for r in ctx.analytics.query(start, end, "day,liveOrOnDemand", _MINUTES, max_results=MAX_ROWS):
         d = row(_day(r["day"]))
         d["min_lol_live"] = d["min_lol_live"] or 0
         d["min_lol_ondemand"] = d["min_lol_ondemand"] or 0
@@ -73,7 +75,7 @@ def collect(ctx: CollectContext, start: date, end: date) -> dict[str, list[dict]
 def yearly_minutes(ctx: CollectContext) -> dict:
     """Watch minutes by content type over the last 365 days (query 5)."""
     start, end = ctx.today - timedelta(days=365), ctx.today - timedelta(days=1)
-    rows = ctx.analytics.query(start, end, "creatorContentType", _MINUTES)
+    rows = ctx.analytics.query(start, end, "creatorContentType", _MINUTES, max_results=MAX_ROWS)
     out: dict = {"min_live": None, "min_vod": None, "min_shorts": None, "start": start, "end": end}
     if rows:  # no rows at all stays None (no data), otherwise absent types are 0
         out.update(min_live=0, min_vod=0, min_shorts=0)

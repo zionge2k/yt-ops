@@ -21,6 +21,7 @@ class FakeAnalytics:
 
     def query(self, start, end, dims, metrics, filters=None, sort=None, max_results=200):
         self.calls.append((start, end, dims, metrics))
+        self.caps = getattr(self, 'caps', []) + [max_results]
         return self.by_dims.get(dims, [])
 
 
@@ -98,3 +99,10 @@ def test_yearly_minutes_row():
     yearly_call = [x for x in c.analytics.calls if x[2] == Q5][0]
     assert yearly_call[:2] == (date(2025, 11, 7), date(2026, 11, 6))
     assert channel_daily.yearly_minutes(c)["min_live"] == 1500
+
+
+def test_all_queries_request_1000_rows():
+    # 90-day backfill: day x creatorContentType can reach 360 rows, above the 200 default.
+    c = ctx(full())
+    channel_daily.collect(c, date(2026, 11, 1), date(2026, 11, 2))
+    assert len(c.analytics.caps) >= 4 and set(c.analytics.caps) == {1000}
