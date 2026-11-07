@@ -224,3 +224,11 @@ def test_runner_empty_schedule_still_replaces(monkeypatch):
     calls = _schedule_setup(monkeypatch, [])
     runner.run_collect(["a2p"], dry_run=False, conn=object(), today=TODAY)
     assert ("replace", "yt_schedule", "a2p", 0) in calls
+
+
+def test_run_log_records_channels(monkeypatch):
+    _setup(monkeypatch, bad=("soombi",))
+    logged = []
+    monkeypatch.setattr(runner.store, "upsert", lambda conn, t, rows, pk, keep=(): logged.extend(rows) if t == "yt_run_log" else None)
+    runner.run_collect(["soombi", "a2p"], dry_run=False, conn=object(), today=TODAY)
+    assert logged[0]["channels"].obj == ["soombi", "a2p"]

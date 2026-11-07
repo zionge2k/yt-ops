@@ -37,6 +37,10 @@ function kstFull(iso) {
   const p = kstParts(iso);
   return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
 }
+function kstMdHm(iso) {
+  const p = kstParts(iso);
+  return `${p.month}/${p.day} ${p.hour}:${p.minute}`;
+}
 const mmdd = (d) => d.slice(5).replace("-", "/");
 
 function sparkline(values) {
@@ -202,7 +206,7 @@ function renderShorts() {
 
 function renderErrors() {
   if (!DATA.errors || !DATA.errors.length) return "";
-  const items = DATA.errors.map((e) => `<li>⚪ ${esc(e.channel)}: ${esc(e.stage)} ${esc(e.error)}</li>`).join("");
+  const items = DATA.errors.map((e) => `<li>⚪ ${esc(e.channel)}: ${esc(e.stage)} ${esc(e.error)}${e.run_started_at ? ` <span class="muted">(${esc(kstMdHm(e.run_started_at))})</span>` : ""}</li>`).join("");
   return `<div class="errors"><h3>수집 오류</h3><ul>${items}</ul></div>`;
 }
 

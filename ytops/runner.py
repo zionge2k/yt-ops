@@ -151,6 +151,7 @@ def run_collect(
                 "run_id": result.run_id, "started_at": started_at,
                 "finished_at": datetime.now(timezone.utc), "ok": not result.errors,
                 "latest_day": result.latest_day,
+                "channels": Jsonb(list(keys)),
                 "errors": Jsonb(result.errors), "counts": Jsonb(result.counts),
             }], ["run_id"])
         except Exception as e:

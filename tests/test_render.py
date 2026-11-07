@@ -102,7 +102,7 @@ def test_build_shape_from_fake_rows(monkeypatch):
     assert mo["subs_exact"] == 905 and mo["subs_pct"] == 90.5 and mo["hours_approx"] == 200.0
     assert mo["hours_pct"] == 5.0 and mo["official"] == {"value": 150.0, "as_of": "2026-11-01"}
     assert d["shorts"]["soombi"] == {"views": 50, "engaged_ratio": 0.5, "subs_per_1k": 40.0}
-    assert d["errors"] == [{"channel": "a2p", "stage": "x"}]
+    assert d["errors"] == [{"channel": "a2p", "stage": "x", "run_started_at": None}]
 
 
 def _cfg():
@@ -176,3 +176,25 @@ def test_live_none_without_rows(monkeypatch):
     assert live["soombi"]["days_with_live"] == 0
     no_rows = next(k for k in live if k != "soombi")
     assert live[no_rows]["days_with_live"] is None and live[no_rows]["hours_live"] is None
+
+
+def test_collect_failed_uses_last_run_covering_channel(monkeypatch):
+    t1, t2 = datetime(2026, 11, 6, 0, 30, tzinfo=UTC), datetime(2026, 11, 7, 0, 30, tzinfo=UTC)
+    log = [  # newest first, as the query returns them
+        {"run_id": "r2", "started_at": t2, "channels": ["soombi"], "errors": []},
+        {"run_id": "r1", "started_at": t1, "channels": ["a2p", "soombi"],
+         "errors": [{"channel": "a2p", "stage": "client", "error": "TokenExpired", "message": "m"}]},
+    ]
+    d = _build(monkeypatch, yt_run_log=log)
+    flags = {c["key"]: c["collect_failed"] for c in d["channels"]}
+    assert flags["a2p"] is True and flags["soombi"] is False
+    assert d["errors"] == [{"channel": "a2p", "stage": "client", "error": "TokenExpired",
+                            "message": "m", "run_started_at": t1.isoformat()}]
+
+
+def test_run_without_channels_value_covers_every_channel(monkeypatch):
+    log = [{"run_id": "old", "started_at": datetime(2026, 11, 6, tzinfo=UTC), "channels": None,
+            "errors": [{"channel": "a2p", "stage": "client", "error": "E", "message": "m"}]}]
+    d = _build(monkeypatch, yt_run_log=log)
+    flags = {c["key"]: c["collect_failed"] for c in d["channels"]}
+    assert flags["a2p"] is True and flags["soombi"] is False

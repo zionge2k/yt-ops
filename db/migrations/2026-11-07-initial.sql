@@ -116,6 +116,7 @@ create table if not exists yt_run_log (
   finished_at timestamptz,
   ok boolean,
   latest_day date,
+  channels jsonb,
   errors jsonb,
   counts jsonb,
   primary key (run_id)

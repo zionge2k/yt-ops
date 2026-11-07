@@ -148,6 +148,19 @@ def _failed(stage) -> bool:
     return stage in FAILED_STAGES or stage.startswith("store:")
 
 
+def _channel_errors(runs, key) -> list[dict]:
+    """Errors of the most recent run that covered this channel (runs: newest first).
+
+    A run without a `channels` value (older rows) is treated as covering every channel.
+    """
+    for r in runs:
+        covered = r.get("channels")
+        if covered is None or key in covered:
+            return [{**e, "run_started_at": r.get("started_at")}
+                    for e in (r.get("errors") or []) if e.get("channel") == key]
+    return []
+
+
 def build(conn, *, today: date, config) -> dict:
     channels, th = config["channels"], config["thresholds"]
     up, down = th["up_pct"], th["down_pct"]
@@ -198,14 +211,15 @@ def build(conn, *, today: date, config) -> dict:
     manual = {r["channel_key"]: r for r in fetch(conn, "select * from yt_manual")
               if r["field"] == "official_watch_hours_365"}
     sched_rows = _current_schedule(fetch(conn, "select * from yt_schedule"))
-    runs = fetch(conn, "select * from yt_run_log order by started_at desc limit 1")
-    errors = (runs[0].get("errors") if runs else None) or []
+    runs = fetch(conn, "select * from yt_run_log order by started_at desc limit 50")
+    errors: list[dict] = []
 
     out_channels, live, schedule, monet, shorts = [], {}, {}, {}, {}
     for k, ch in channels.items():
         s = subs.get(k)
         sub = {"api": s["api_subscribers"], "exact": s["exact_subscribers"]} if s else None
-        ch_errors = [e for e in errors if e.get("channel") == k]
+        ch_errors = _channel_errors(runs, k)
+        errors += ch_errors
         out_channels.append({"key": k, "display": ch.display, "is_live": ch.is_live,
                              "subscribers": sub, "errors": ch_errors,
                              "collect_failed": any(_failed(e.get("stage")) for e in ch_errors)})
