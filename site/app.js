@@ -135,16 +135,21 @@ function renderTop(view) {
 }
 
 // ---------- #board ----------
+/** Snapshot time for the live block; a channel with no snapshot has taken_at null (never new Date(null)). */
+const liveAt = (l) => `<span class="at n">${isNull(l.taken_at) ? "기록 없음" : mdhm(l.taken_at)}</span>`;
+
 function liveBlock(ch, b) {
   if (!ch.is_live) return `<div class="live off"><span class="k">라이브</span><span class="v">없음</span></div>`;
   const l = b.live;
   if (!l) return `<div class="live off"><span class="k">라이브</span><span class="v">—</span></div>`;
-  if (!l.on) return `<div class="live off"><span class="k">라이브</span><span class="v">꺼짐</span><span class="at n">${mdhm(l.taken_at)}</span></div>`;
+  // on === null: state unknown (live collection stopped or never ran); stale keeps the last snapshot time
+  if (l.on === null || l.on === undefined) return `<div class="live off"><span class="k">라이브</span><span class="v">확인 불가</span>${l.stale ? liveAt(l) : ""}</div>`;
+  if (!l.on) return `<div class="live off"><span class="k">라이브</span><span class="v">꺼짐</span>${liveAt(l)}</div>`;
   return `<div class="live on"><span class="k">라이브</span>
     <span class="v on">방송 중${l.dual ? ` · 듀얼 ${fmt(l.count)}` : ""}</span>
     <span class="n">보는 중 <b>${fmt(l.viewers)}</b>명</span>
     <span class="n">조회 <b>${fmt(l.views)}</b></span>
-    <span class="at n">${mdhm(l.taken_at)}</span></div>`;
+    ${liveAt(l)}</div>`;
 }
 
 function renderBoard() {
