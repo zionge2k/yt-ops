@@ -60,3 +60,8 @@
 - Task 4: note: 재리뷰어의 200행 절단 우려 — analytics 클라이언트 startIndex 페이지 넘김으로 해소(5,000행 상한), uploads() 는 전체 페이지
 - Task 6: note: channels[].subscribers 는 스냅샷 없으면 None — Task 7 디스패치에 명시
 - Task 9: note: 백필 90일에 61행은 API 가 데이터 없는 날을 생략해서임(plain day 질의도 61행) — 결함 아님
+
+## API 한도 (2026-11-07 형아 결정)
+
+- 통장(GCP 프로젝트)은 지금 둘: shorts-factory(숨비찰나·BACK THEN·A2P·MORROW) · nowbrd-release(pli.wav·groove.wav·숨비카페·JustSoombi). 하루 1회 수집은 한 통장 한도의 수 % 수준.
+- **모자랄 기능이 생길 때만** 통장을 추가한다(예: 2차 레퍼런스 채널 검색은 100포인트/회라 검색 전용 통장). 지금 4/4 배치는 바꾸지 않는다(열쇠가 통장에 묶여 있어 옮기면 재인증).
