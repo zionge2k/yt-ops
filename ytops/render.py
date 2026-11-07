@@ -124,6 +124,24 @@ def _cap(v):
     return min(v, 100.0)
 
 
+def _no_compare(m: dict) -> None:
+    """Drop the comparison of a period summary (the current window still shows)."""
+    m["prev"], m["pct"], m["status"] = None, None, "grey"
+
+
+def _current_schedule(rows):
+    """Rows from each channel's latest collection only (yt_schedule is upsert-only)."""
+    last: dict[str, object] = {}
+    for r in rows:
+        k, seen = r["channel_key"], r.get("seen_at")
+        if seen is not None and (last.get(k) is None or seen > last[k]):
+            last[k] = seen
+    return [r for r in rows if r.get("seen_at") == last.get(r["channel_key"])]
+
+
+FAILED_STAGES = ("client", "channel_daily")
+
+
 def build(conn, *, today: date, config) -> dict:
     channels, th = config["channels"], config["thresholds"]
     up, down = th["up_pct"], th["down_pct"]
@@ -133,6 +151,11 @@ def build(conn, *, today: date, config) -> dict:
     by_ch: dict[str, list] = {k: [] for k in channels}
     for r in daily:
         by_ch.setdefault(r["channel_key"], []).append(r)
+
+    # a channel's comparison is meaningless when its history does not reach back to the
+    # previous window, or when its collection fell behind the global latest day
+    first_day = {k: min((r["day"] for r in rs), default=None) for k, rs in by_ch.items()}
+    ch_latest = {k: max((r["day"] for r in rs), default=None) for k, rs in by_ch.items()}
 
     wins = {p: periods.window(latest, p) if latest else None for p in PERIODS}
     out_periods = {}
@@ -150,7 +173,10 @@ def build(conn, *, today: date, config) -> dict:
                 for k in channels
             },
         }
-        for m in out_periods[str(p)]["channels"].values():
+        for k, m in out_periods[str(p)]["channels"].items():
+            if pw and (first_day[k] is None or first_day[k] > pw[0] or ch_latest[k] < latest):
+                for summary in m.values():
+                    _no_compare(summary)
             wh = m["watch_hours"]
             wh["cur"], wh["prev"] = _round(wh["cur"], 1), _round(wh["prev"], 1)
             wh["spark"] = [_round(v, 1) for v in wh["spark"]]
@@ -165,7 +191,7 @@ def build(conn, *, today: date, config) -> dict:
     yearly = _latest_per_channel(fetch(conn, "select * from yt_yearly_minutes"), "as_of")
     manual = {r["channel_key"]: r for r in fetch(conn, "select * from yt_manual")
               if r["field"] == "official_watch_hours_365"}
-    sched_rows = fetch(conn, "select * from yt_schedule")
+    sched_rows = _current_schedule(fetch(conn, "select * from yt_schedule"))
     runs = fetch(conn, "select * from yt_run_log order by started_at desc limit 1")
     errors = (runs[0].get("errors") if runs else None) or []
 
@@ -173,15 +199,19 @@ def build(conn, *, today: date, config) -> dict:
     for k, ch in channels.items():
         s = subs.get(k)
         sub = {"api": s["api_subscribers"], "exact": s["exact_subscribers"]} if s else None
+        ch_errors = [e for e in errors if e.get("channel") == k]
         out_channels.append({"key": k, "display": ch.display, "is_live": ch.is_live,
-                             "subscribers": sub, "errors": [e for e in errors if e.get("channel") == k]})
+                             "subscribers": sub, "errors": ch_errors,
+                             "collect_failed": any(e.get("stage") in FAILED_STAGES for e in ch_errors)})
         rows7 = in7(k)
         if ch.is_live:
             sn = snaps.get(k)
+            lv, od = _sum(r["min_lol_live"] for r in rows7), _sum(r["min_lol_ondemand"] for r in rows7)
             live[k] = {
-                "days_with_live": sum(1 for r in rows7 if (_num(r["min_lol_live"]) or 0) > 0),
-                "hours_live": _round((_sum(r["min_lol_live"] for r in rows7) or 0) / 60, 1),
-                "hours_ondemand": _round((_sum(r["min_lol_ondemand"] for r in rows7) or 0) / 60, 1),
+                # no rows in the window -> unknown (None), not "no live" (0)
+                "days_with_live": sum(1 for r in rows7 if (_num(r["min_lol_live"]) or 0) > 0) if rows7 else None,
+                "hours_live": None if lv is None else _round(lv / 60, 1),
+                "hours_ondemand": None if od is None else _round(od / 60, 1),
                 "last_snapshot": None if sn is None else {
                     "taken_at": sn["taken_at"], "life_cycle": sn["life_cycle"], "concurrent": sn["concurrent"],
                     "health": sn["health"], "stream_status": sn["stream_status"], "title": sn["title"]},

@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from ytops import registry, render
@@ -32,6 +32,15 @@ def test_shortage_short_when_under_plan():
     assert ok["long"]["status"] == "ok"
 
 
+def _day_row(key, day, views=None, **kw):
+    r = {"channel_key": key, "day": day, "views": views, "min_live": None, "min_vod": None,
+         "min_lol_live": None, "min_lol_ondemand": None, "subs_gained": None, "subs_lost": None,
+         "views_shorts": None, "engaged_views_shorts": None, "subs_gained_shorts": None,
+         "min_shorts": None, "min_unspec": None, "collected_at": None}
+    r.update(kw)
+    return r
+
+
 def _fake_fetch(conn, sql, params=()):
     rows = {
         "yt_channel_daily": [
@@ -43,11 +52,13 @@ def _fake_fetch(conn, sql, params=()):
              "min_vod": None, "min_lol_live": 0, "min_lol_ondemand": 0, "subs_gained": None,
              "subs_lost": None, "views_shorts": None, "engaged_views_shorts": None,
              "subs_gained_shorts": None, "min_shorts": None, "min_unspec": None, "collected_at": None},
+            _day_row("soombi", date(2026, 10, 1), views=7),
         ],
         "yt_subs_snapshot": [{"channel_key": "soombi", "taken_on": date(2026, 11, 6),
                               "api_subscribers": 900, "exact_subscribers": 905}],
         "yt_schedule": [{"channel_key": "soombi", "video_id": "v", "title": "t",
-                         "publish_at": datetime(2026, 11, 8, 3, tzinfo=UTC), "content_kind": "long"}],
+                         "publish_at": datetime(2026, 11, 8, 3, tzinfo=UTC), "content_kind": "long",
+                         "seen_at": datetime(2026, 11, 7, 0, 30, tzinfo=UTC)}],
         "yt_live_snapshot": [{"channel_key": "soombi", "taken_at": datetime(2026, 11, 7, 1, tzinfo=UTC),
                               "life_cycle": "live", "concurrent": 3, "health": "good",
                               "stream_status": "active", "title": "x"}],
@@ -92,3 +103,74 @@ def test_build_shape_from_fake_rows(monkeypatch):
     assert mo["hours_pct"] == 5.0 and mo["official"] == {"value": 150.0, "as_of": "2026-11-01"}
     assert d["shorts"]["soombi"] == {"views": 50, "engaged_ratio": 0.5, "subs_per_1k": 40.0}
     assert d["errors"] == [{"channel": "a2p", "stage": "x"}]
+
+
+def _cfg():
+    return {"channels": registry.load_channels(), "thresholds": registry.load_thresholds()}
+
+
+def _build(monkeypatch, **override):
+    def fetch(conn, sql, params=()):
+        for table, r in override.items():
+            if table in sql:
+                return r
+        return _fake_fetch(conn, sql, params)
+
+    monkeypatch.setattr(render, "fetch", fetch)
+    return json.loads(json.dumps(render.build(None, today=TODAY, config=_cfg()), default=render._json_default))
+
+
+def test_period_prev_none_when_history_too_short(monkeypatch):
+    # history starts 10-25, after the 7-day prev window start (10-22): no comparison
+    rows = [_day_row("soombi", date(2026, 11, 4), views=100), _day_row("soombi", date(2026, 10, 25), views=80)]
+    d = _build(monkeypatch, yt_channel_daily=rows)
+    v = d["periods"]["7"]["channels"]["soombi"]["views"]
+    assert v["cur"] == 100 and v["prev"] is None and v["pct"] is None and v["status"] == "grey"
+    assert len(v["spark"]) == 7
+
+
+def test_channel_behind_global_latest_is_grey(monkeypatch):
+    rows = [_day_row("soombi", date(2026, 11, 4), views=100)]
+    rows += [_day_row("a2p", date(2026, 8, 1) + timedelta(days=i), views=10) for i in range(94)]  # to 11-02
+    d = _build(monkeypatch, yt_channel_daily=rows)
+    assert d["latest_day"] == "2026-11-04"
+    for p in ("7", "28", "90"):
+        for m in d["periods"][p]["channels"]["a2p"].values():
+            assert m["prev"] is None and m["pct"] is None and m["status"] == "grey"
+    assert d["periods"]["7"]["channels"]["a2p"]["views"]["cur"] == 50
+
+
+def test_collect_failed_flag_from_run_log(monkeypatch):
+    log = [{"run_id": "r", "errors": [
+        {"channel": "a2p", "stage": "client", "error": "TokenExpired"},
+        {"channel": "pliwav", "stage": "channel_daily", "error": "HttpError"},
+        {"channel": "backthen", "stage": "live", "error": "HttpError"}]}]
+    d = _build(monkeypatch, yt_run_log=log)
+    flags = {c["key"]: c["collect_failed"] for c in d["channels"]}
+    assert flags["a2p"] is True and flags["pliwav"] is True
+    assert flags["backthen"] is False and flags["soombi"] is False
+
+
+def test_schedule_ignores_stale_seen_at(monkeypatch):
+    old, new = datetime(2026, 11, 5, 0, 30, tzinfo=UTC), datetime(2026, 11, 7, 0, 30, tzinfo=UTC)
+    sched = [
+        {"channel_key": "soombi", "video_id": "kept", "title": "t", "content_kind": "long",
+         "publish_at": datetime(2026, 11, 8, 3, tzinfo=UTC), "seen_at": new},
+        {"channel_key": "soombi", "video_id": "ghost", "title": "t", "content_kind": "short",
+         "publish_at": datetime(2026, 11, 9, 3, tzinfo=UTC), "seen_at": old},
+        {"channel_key": "a2p", "video_id": "other", "title": "t", "content_kind": "short",
+         "publish_at": datetime(2026, 11, 9, 3, tzinfo=UTC), "seen_at": old},
+    ]
+    d = _build(monkeypatch, yt_schedule=sched)
+    assert d["schedule"]["soombi"]["long"] == 1 and d["schedule"]["soombi"]["shorts"] == 0
+    assert d["schedule"]["a2p"]["shorts"] == 1  # max(seen_at) is per channel
+
+
+def test_live_none_without_rows(monkeypatch):
+    rows = [_day_row("soombi", date(2026, 11, 4), views=100, min_lol_live=None, min_lol_ondemand=None)]
+    d = _build(monkeypatch, yt_channel_daily=rows)
+    live = d["live"]
+    assert live["soombi"]["hours_live"] is None and live["soombi"]["hours_ondemand"] is None
+    assert live["soombi"]["days_with_live"] == 0
+    no_rows = next(k for k in live if k != "soombi")
+    assert live[no_rows]["days_with_live"] is None and live[no_rows]["hours_live"] is None

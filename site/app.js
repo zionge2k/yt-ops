@@ -87,11 +87,17 @@ function renderTop() {
 function renderScorecards() {
   const per = DATA.periods[period];
   const cards = DATA.channels.map((ch) => {
-    const m = per.channels[ch.key];
+    // a failed collection hides the comparison (▲▼%) and greys the card
+    const failed = ch.collect_failed === true;
+    const raw = per.channels[ch.key];
+    const m = failed
+      ? Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, { ...v, pct: null, status: "grey" }]))
+      : raw;
     const fromExact = ch.subscribers && !isNull(ch.subscribers.exact);
     const sub = ch.subscribers ? (fromExact ? ch.subscribers.exact : ch.subscribers.api) : null;
     return `<div class="card">
       <h3>${DOT[m.views.status] || "⚪"} ${esc(ch.display)}</h3>
+      ${failed ? '<div class="note">수집 실패 — 로그 확인</div>' : ""}
       ${metricRow("구독자", fromExact ? "➗" : "🔵", fmt(sub), null)}
       ${metricRow("기간 순증", "⏳", fmt(m.subs_net.cur), m.subs_net)}
       ${metricRow("조회수", "⏳", fmt(m.views.cur), m.views)}

@@ -20,7 +20,8 @@
     "api": 990,
     "exact": 990
    },
-   "errors": []
+   "errors": [],
+   "collect_failed": false
   },
   {
    "key": "urachacha",
@@ -30,7 +31,8 @@
     "api": 2640,
     "exact": 2437
    },
-   "errors": []
+   "errors": [],
+   "collect_failed": false
   },
   {
    "key": "backthen",
@@ -40,7 +42,8 @@
     "api": 1650,
     "exact": 1537
    },
-   "errors": []
+   "errors": [],
+   "collect_failed": false
   },
   {
    "key": "a2p",
@@ -50,7 +53,8 @@
     "api": 770,
     "exact": null
    },
-   "errors": []
+   "errors": [],
+   "collect_failed": false
   },
   {
    "key": "pliwav",
@@ -60,7 +64,8 @@
     "api": 3410,
     "exact": 3137
    },
-   "errors": []
+   "errors": [],
+   "collect_failed": false
   },
   {
    "key": "groovewav",
@@ -70,11 +75,12 @@
    "errors": [
     {
      "channel": "groovewav",
-     "stage": "analytics",
+     "stage": "client",
      "error": "TokenExpired",
      "message": "refresh token 만료"
     }
-   ]
+   ],
+   "collect_failed": true
   },
   {
    "key": "soombicafe",
@@ -84,7 +90,8 @@
     "api": 330,
     "exact": null
    },
-   "errors": []
+   "errors": [],
+   "collect_failed": false
   },
   {
    "key": "justsoombi",
@@ -94,7 +101,8 @@
     "api": 1320,
     "exact": 1237
    },
-   "errors": []
+   "errors": [],
+   "collect_failed": false
   }
  ],
  "periods": {
@@ -3952,7 +3960,7 @@
  "errors": [
   {
    "channel": "groovewav",
-   "stage": "analytics",
+   "stage": "client",
    "error": "TokenExpired",
    "message": "refresh token 만료"
   }
