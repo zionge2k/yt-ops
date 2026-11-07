@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       backfill_days:
-        description: '과거 N일 다시 채우기 (0 이면 평소 수집)'
+        description: '과거 N일 다시 채우기 (0 이면 평소 수집, 첫 실행은 185)'
         type: number
         default: 0
 

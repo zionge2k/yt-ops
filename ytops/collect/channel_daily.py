@@ -8,7 +8,7 @@ from ytops.collect.context import CollectContext
 _BY_TYPE = {"shorts": "min_shorts", "liveStream": "min_live", "videoOnDemand": "min_vod"}
 _BY_LOL = {"LIVE": "min_lol_live", "ON_DEMAND": "min_lol_ondemand"}
 # Per-request cap (TruncationError otherwise). Largest query is day,creatorContentType:
-# 180-day backfill x <=5 content types = <=900 rows, still below it.
+# 185-day backfill x <=5 content types = <=925 rows, still below it.
 MAX_ROWS = 1000
 _MINUTES = "estimatedMinutesWatched"
 

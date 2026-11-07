@@ -90,9 +90,9 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--dry-run", action="store_true")
     b = sub.add_parser("backfill")
     _targets(b)
-    b.add_argument("--days", type=int, default=180,
-                   help="channel daily/subs/live/schedule window (default 180, so the 90-day "
-                        "comparison has a full previous window); per-video daily stays 28")
+    b.add_argument("--days", type=int, default=185,
+                   help="channel daily/subs/live/schedule window (default 185: analytics lags ~3 days, so the 90-day "
+                        "comparison needs a full previous window); per-video daily stays 28")
     b.add_argument("--dry-run", action="store_true")
     sub.add_parser("status")
     r = sub.add_parser("render")
