@@ -144,10 +144,12 @@ def test_collect_failed_flag_from_run_log(monkeypatch):
     log = [{"run_id": "r", "errors": [
         {"channel": "a2p", "stage": "client", "error": "TokenExpired"},
         {"channel": "pliwav", "stage": "channel_daily", "error": "HttpError"},
-        {"channel": "backthen", "stage": "live", "error": "HttpError"}]}]
+        {"channel": "backthen", "stage": "live", "error": "HttpError"},
+        {"channel": "groovewav", "stage": "store:yt_channel_daily", "error": "OperationalError"}]}]
     d = _build(monkeypatch, yt_run_log=log)
     flags = {c["key"]: c["collect_failed"] for c in d["channels"]}
     assert flags["a2p"] is True and flags["pliwav"] is True
+    assert flags["groovewav"] is True
     assert flags["backthen"] is False and flags["soombi"] is False
 
 

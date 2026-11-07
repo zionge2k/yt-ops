@@ -142,6 +142,12 @@ def _current_schedule(rows):
 FAILED_STAGES = ("client", "channel_daily")
 
 
+def _failed(stage) -> bool:
+    """Collection or DB-write failures make a channel's numbers untrustworthy."""
+    stage = stage or ""
+    return stage in FAILED_STAGES or stage.startswith("store:")
+
+
 def build(conn, *, today: date, config) -> dict:
     channels, th = config["channels"], config["thresholds"]
     up, down = th["up_pct"], th["down_pct"]
@@ -202,7 +208,7 @@ def build(conn, *, today: date, config) -> dict:
         ch_errors = [e for e in errors if e.get("channel") == k]
         out_channels.append({"key": k, "display": ch.display, "is_live": ch.is_live,
                              "subscribers": sub, "errors": ch_errors,
-                             "collect_failed": any(e.get("stage") in FAILED_STAGES for e in ch_errors)})
+                             "collect_failed": any(_failed(e.get("stage")) for e in ch_errors)})
         rows7 = in7(k)
         if ch.is_live:
             sn = snaps.get(k)
