@@ -502,3 +502,18 @@ def test_legacy_live_only_rows_marked_by_migration_do_not_clear_daily_failure(mo
     d = _build(monkeypatch, yt_run_log=log)
     assert {c["key"]: c["collect_failed"] for c in d["channels"]}["soombi"] is True
     assert d["last_daily_ok_at"] is None
+
+
+def test_live_subset_runs_count_as_live_runs_but_not_daily_runs(monkeypatch):
+    t1, t2 = datetime(2026, 11, 7, 0, 30, tzinfo=UTC), NOW - timedelta(minutes=5)
+    log = [  # newest first: live + schedule is a subset-free mix, but still has no channel_daily
+        {"run_id": "mix", "started_at": t2, "channels": list(render.ORDER), "collectors": ["live", "schedule"],
+         "errors": [], "ok": True},
+        {"run_id": "daily", "started_at": t1, "channels": list(render.ORDER), "collectors": ["channel_daily", "live"],
+         "ok": False, "errors": [{"channel": "soombi", "stage": "channel_daily", "error": "E", "message": "m"}]},
+    ]
+    rows = [r for r in ROWS["yt_live_snapshot"] if r["channel_key"] != "soombi"]
+    d = _build(monkeypatch, yt_run_log=log, yt_live_snapshot=rows)
+    assert {c["key"]: c["collect_failed"] for c in d["channels"]}["soombi"] is True
+    assert d["last_daily_ok_at"] is None
+    assert d["board"]["soombi"]["live"]["on"] is False  # the mixed run ran live without error

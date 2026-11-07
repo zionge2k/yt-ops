@@ -140,6 +140,10 @@ def run_collect(
     start, end, video_start = today - timedelta(days=days), today - timedelta(days=1), today - timedelta(days=video_days)
     channels = load_channels()
     result = RunResult(uuid.uuid4().hex, started_at, None)
+    # a run of the live collector alone only matters for channels that broadcast: skip building
+    # (and refreshing the credentials of) the other channels' clients
+    if {n for n, _ in collectors} <= {"live"}:
+        keys = [k for k in keys if channels[k].is_live]
     days_seen: list[date] = []
     db = None if dry_run else conn
 

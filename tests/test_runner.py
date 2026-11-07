@@ -285,7 +285,7 @@ def test_only_limits_collectors(monkeypatch):
     monkeypatch.setattr(runner, "COLLECTORS", mods)
     monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
     monkeypatch.setattr(runner, "data_for_key", lambda k: "x")
-    monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": "A"})
+    monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": SimpleNamespace(is_live=True)})
     runner.run_collect(["a2p"], dry_run=True, today=TODAY, only=["live"])
     assert ran == ["live"]
     import pytest
@@ -320,10 +320,30 @@ def test_run_log_records_collectors(monkeypatch):
     monkeypatch.setattr(runner, "COLLECTORS", mods)
     monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
     monkeypatch.setattr(runner, "data_for_key", lambda k: "x")
-    monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": "A"})
+    monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": SimpleNamespace(is_live=True)})
     logged = []
     monkeypatch.setattr(runner.store, "upsert", lambda conn, t, rows, pk, keep=(): logged.extend(rows) if t == "yt_run_log" else None)
     runner.run_collect(["a2p"], dry_run=False, conn=object(), today=TODAY, only=["live"])
     runner.run_collect(["a2p"], dry_run=False, conn=object(), today=TODAY)
     assert logged[0]["collectors"].obj == ["live"]
     assert logged[1]["collectors"].obj == ["channel_daily", "live"]
+
+
+def test_live_only_run_skips_non_live_channels(monkeypatch):
+    built = []
+    mods = [(n, SimpleNamespace(collect=lambda ctx, s, e: {})) for n in ("channel_daily", "live", "schedule")]
+    monkeypatch.setattr(runner, "COLLECTORS", mods)
+    monkeypatch.setattr(runner, "analytics_for_key", lambda k: built.append(("analytics", k)) or "x")
+    monkeypatch.setattr(runner, "data_for_key", lambda k: built.append(("data", k)) or "x")
+    monkeypatch.setattr(runner, "load_channels", lambda: {
+        "soombi": SimpleNamespace(is_live=True), "a2p": SimpleNamespace(is_live=False)})
+    logged = []
+    monkeypatch.setattr(runner.store, "upsert", lambda conn, t, rows, pk, keep=(): logged.extend(rows) if t == "yt_run_log" else None)
+    runner.run_collect(["soombi", "a2p"], dry_run=False, conn=object(), today=TODAY, only=["live"])
+    assert built == [("analytics", "soombi"), ("data", "soombi")]
+    assert logged[-1]["channels"].obj == ["soombi"]
+    # a mixed run (live is not the only collector) and a full run still visit every channel
+    built.clear()
+    runner.run_collect(["soombi", "a2p"], dry_run=True, today=TODAY, only=["live", "schedule"])
+    runner.run_collect(["soombi", "a2p"], dry_run=True, today=TODAY)
+    assert sorted({k for _, k in built}) == ["a2p", "soombi"] and len(built) == 8
