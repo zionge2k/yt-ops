@@ -14,8 +14,9 @@ def fixture(name: str) -> dict:
     return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
 
 
-def http_error(status: int) -> HttpError:
-    return HttpError(httplib2.Response({"status": status}), b"{}")
+def http_error(status: int, reason: str | None = None) -> HttpError:
+    body = {"error": {"errors": [{"reason": reason}]}} if reason else {}
+    return HttpError(httplib2.Response({"status": status}), json.dumps(body).encode())
 
 
 class _Request:

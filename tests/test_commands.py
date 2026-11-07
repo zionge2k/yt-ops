@@ -69,7 +69,7 @@ def test_live_table_marks_bad(monkeypatch, capsys):
     assert cli.main(["live", "--channel", "backthen", "--save"]) == 0
     out = capsys.readouterr().out
     assert "🔴" in out and "밤 판" in out and "concurrent" in out
-    assert saved["t"] == "yt_live_snapshot" and saved["pk"] == ["channel_key", "taken_at"]
+    assert saved["t"] == "yt_live_snapshot" and saved["pk"] == ["channel_key", "taken_at", "broadcast_id"]
     assert saved["rows"][0]["concurrent"] is None
 
 

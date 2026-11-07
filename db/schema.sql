@@ -87,14 +87,14 @@ alter table yt_schedule enable row level security;
 create table if not exists yt_live_snapshot (
   channel_key text not null,
   taken_at timestamptz not null,
-  broadcast_id text,
+  broadcast_id text not null default 'none',
   life_cycle text,
   concurrent integer,
   health text,
   stream_status text,
   actual_start timestamptz,
   title text,
-  primary key (channel_key, taken_at)
+  primary key (channel_key, taken_at, broadcast_id)
 );
 alter table yt_live_snapshot enable row level security;
 

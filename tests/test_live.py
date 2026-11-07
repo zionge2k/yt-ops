@@ -37,7 +37,7 @@ def test_live_none_row_when_no_broadcast():
     data = FakeData([])
     rows = live.collect(ctx(data), TODAY, TODAY)["yt_live_snapshot"]
     assert rows == [{
-        "channel_key": "soombi", "taken_at": NOW, "broadcast_id": None, "life_cycle": "none",
+        "channel_key": "soombi", "taken_at": NOW, "broadcast_id": "none", "life_cycle": "none",
         "concurrent": None, "health": None, "stream_status": None, "actual_start": None,
         "title": None,
     }]
@@ -77,14 +77,14 @@ def test_live_skips_api_when_not_live_channel():
     data = FakeData(http_error(500))
     c = CollectContext("urachacha", off, None, data, TODAY, NOW)
     row = live.collect(c, TODAY, TODAY)["yt_live_snapshot"][0]
-    assert (row["channel_key"], row["broadcast_id"], row["life_cycle"]) == ("urachacha", None, "none")
+    assert (row["channel_key"], row["broadcast_id"], row["life_cycle"]) == ("urachacha", "none", "none")
     assert data.calls == []
 
 
 def test_live_403_yields_none_row():
-    rows = live.collect(ctx(FakeData(http_error(403))), TODAY, TODAY)["yt_live_snapshot"]
+    rows = live.collect(ctx(FakeData(http_error(403, "liveStreamingNotEnabled"))), TODAY, TODAY)["yt_live_snapshot"]
     assert rows == [{
-        "channel_key": "soombi", "taken_at": NOW, "broadcast_id": None, "life_cycle": "none",
+        "channel_key": "soombi", "taken_at": NOW, "broadcast_id": "none", "life_cycle": "none",
         "concurrent": None, "health": None, "stream_status": None, "actual_start": None,
         "title": None,
     }]
@@ -96,3 +96,33 @@ def test_live_other_http_error_propagates():
 
     with pytest.raises(HttpError):
         live.collect(ctx(FakeData(http_error(500))), TODAY, TODAY)
+
+
+def test_live_403_quota_propagates():
+    import pytest
+    from googleapiclient.errors import HttpError
+
+    with pytest.raises(HttpError):
+        live.collect(ctx(FakeData(http_error(403, "quotaExceeded"))), TODAY, TODAY)
+
+
+def test_live_403_without_reason_propagates():
+    import pytest
+    from googleapiclient.errors import HttpError
+
+    with pytest.raises(HttpError):
+        live.collect(ctx(FakeData(http_error(403))), TODAY, TODAY)
+
+
+def test_http_error_reason():
+    assert live.http_error_reason(http_error(403, "quotaExceeded")) == "quotaExceeded"
+    assert live.http_error_reason(http_error(403)) is None
+
+
+def test_live_two_broadcasts_two_rows():
+    items = fixture("broadcasts_active.json")["items"]
+    second = {**items[0], "id": "bcast0002", "contentDetails": {}}
+    data = FakeData([items[0], second], [_video({"concurrentViewers": "3"})])
+    rows = live.collect(ctx(data), TODAY, TODAY)["yt_live_snapshot"]
+    assert [r["broadcast_id"] for r in rows] == ["bcast0001", "bcast0002"]
+    assert len({(r["channel_key"], r["taken_at"], r["broadcast_id"]) for r in rows}) == 2

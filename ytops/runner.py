@@ -22,7 +22,7 @@ PRIMARY_KEYS: dict[str, list[str]] = {
     "yt_video": ["video_id"],
     "yt_video_daily": ["video_id", "day"],
     "yt_schedule": ["channel_key", "video_id"],
-    "yt_live_snapshot": ["channel_key", "taken_at"],
+    "yt_live_snapshot": ["channel_key", "taken_at", "broadcast_id"],
 }
 REPLACE_PER_CHANNEL = ("yt_schedule",)  # a run finding nothing must clear the old rows
 KEEP: dict[str, tuple[str, ...]] = {"yt_video": ("first_seen_at",)}

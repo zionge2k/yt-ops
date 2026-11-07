@@ -57,7 +57,7 @@ def cmd_live(args) -> int:
     if shown:
         print(reports.table(shown, ["channel", "state", "life_cycle", "concurrent", "health", "stream_status", "title"]))
     if args.save and rows:
-        store.upsert(connect(), "yt_live_snapshot", rows, pk=["channel_key", "taken_at"])
+        store.upsert(connect(), "yt_live_snapshot", rows, pk=["channel_key", "taken_at", "broadcast_id"])
         print(f"saved {len(rows)} rows")
     return 0
 
