@@ -6,11 +6,12 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from googleapiclient.errors import HttpError
 from psycopg.types.json import Jsonb
 
 from ytops import store
 from ytops.analytics import for_key as analytics_for_key
-from ytops.collect import COLLECTORS, subs
+from ytops.collect import COLLECTORS, live, subs
 from ytops.collect.context import CollectContext
 from ytops.data import for_key as data_for_key
 from ytops.registry import load_channels
@@ -82,7 +83,10 @@ def subs_inputs(conn, key: str, fetch=store.fetch, current_rows=()):
 
 
 def _error(key: str, stage: str, e: Exception) -> dict:
-    return {"channel": key, "stage": stage, "error": type(e).__name__, "message": str(e)[:200]}
+    err = {"channel": key, "stage": stage, "error": type(e).__name__, "message": str(e)[:200]}
+    if isinstance(e, HttpError):  # machine-readable, since the message is cut at 200 chars
+        err["status"], err["reason"] = e.resp.status, live.http_error_reason(e)
+    return err
 
 
 def slices(start: date, end: date, size: int = CHANNEL_DAILY_SLICE) -> list[tuple[date, date]]:

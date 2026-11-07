@@ -62,7 +62,7 @@ jobs:
         continue-on-error: true
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-        run: python -m ytops collect --all --only live
+        run: python -m ytops collect --all --only live | tee "$RUNNER_TEMP/collect.log"
 
       - name: 화면 데이터 만들기
         env:
@@ -88,4 +88,11 @@ jobs:
 
       - name: 수집 오류 알림
         if: steps.collect.outcome == 'failure'
-        run: echo "라이브 수집 오류 있음 — 로그 확인" && exit 1
+        run: |
+          # 한도가 바닥난 날은 오류가 전부 403 quota 라 경고만 남기고 끝낸다 (2시간마다 실패 메일이 쌓이지 않게)
+          if grep -q '^quota_exhausted=1$' "$RUNNER_TEMP/collect.log" 2>/dev/null; then
+            echo "::warning::YouTube API 일일 한도 소진 — 라이브 수집 건너뜀"
+            exit 0
+          fi
+          echo "라이브 수집 오류 있음 — 로그 확인"
+          exit 1

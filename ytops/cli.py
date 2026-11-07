@@ -41,6 +41,10 @@ def _only(args) -> list[str] | None:
     return getattr(args, "only", None)
 
 
+def _is_quota_error(e: dict) -> bool:
+    return e.get("status") == 403 and "quota" in (e.get("reason") or "").lower()
+
+
 def _collect(args, *, days: int, video_days: int) -> int:
     conn = None if args.dry_run else store.connect()
     res = runner.run_collect(_keys(args), days=days, video_days=video_days, dry_run=args.dry_run, conn=conn,
@@ -48,6 +52,8 @@ def _collect(args, *, days: int, video_days: int) -> int:
     print(f"run {res.run_id} latest_day={res.latest_day} errors={len(res.errors)} counts={res.counts}")
     for e in res.errors:
         print(f"  ERROR {e['channel']} {e['stage']}: {e['error']}: {e['message']}")
+    if res.errors and all(_is_quota_error(e) for e in res.errors):
+        print("quota_exhausted=1")  # workflows treat a quota-only failure as a warning, not a failed run
     return 1 if res.errors else 0
 
 

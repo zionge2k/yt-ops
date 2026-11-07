@@ -32,3 +32,8 @@ def test_daily_keep_alive_enables_both_workflows():
     daily = _text("daily.yml")
     assert "workflows/daily.yml/enable" in daily
     assert "workflows/live.yml/enable" in daily
+
+
+def test_live_alert_step_tolerates_quota_only_failures():
+    live = _text("live.yml")
+    assert "quota_exhausted=1" in live and "collect.log" in live

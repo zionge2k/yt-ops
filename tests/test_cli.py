@@ -1,3 +1,4 @@
+from tests.fakes import http_error
 from ytops import cli, runner
 
 
@@ -59,3 +60,29 @@ def test_cli_render_writes_json(monkeypatch, tmp_path):
     out = tmp_path / "sub" / "data.json"
     assert cli.main(["render", "--out", str(out), "--today", "2026-11-07"]) == 0
     assert '"latest_day": "2026-11-07"' in out.read_text(encoding="utf-8") and "한글" in out.read_text(encoding="utf-8")
+
+
+def _run_with_errors(monkeypatch, errors):
+    monkeypatch.setattr(cli.runner, "run_collect",
+                        lambda keys, **kw: runner.RunResult("r", None, None, errors, {}))
+    monkeypatch.setattr(cli.store, "connect", lambda: "conn")
+    return cli.main(["collect", "--all", "--only", "live"])
+
+
+def test_quota_exhausted_line_when_every_error_is_a_403_quota(monkeypatch, capsys):
+    errs = [runner._error(k, "live", http_error(403, "quotaExceeded")) for k in ("soombi", "a2p")]
+    assert _run_with_errors(monkeypatch, errs) == 1
+    assert "quota_exhausted=1" in capsys.readouterr().out
+
+
+def test_no_quota_line_when_some_error_is_something_else(monkeypatch, capsys):
+    errs = [runner._error("soombi", "live", http_error(403, "quotaExceeded")),
+            runner._error("a2p", "live", RuntimeError("boom")),
+            runner._error("pliwav", "live", http_error(403, "forbidden"))]
+    assert _run_with_errors(monkeypatch, errs) == 1
+    assert "quota_exhausted" not in capsys.readouterr().out
+
+
+def test_no_quota_line_without_errors(monkeypatch, capsys):
+    assert _run_with_errors(monkeypatch, []) == 0
+    assert "quota_exhausted" not in capsys.readouterr().out
