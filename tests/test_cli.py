@@ -24,7 +24,7 @@ def test_cli_all_and_backfill_defaults(monkeypatch):
     got = _capture(monkeypatch)
     cli.main(["backfill", "--all"])
     assert len(got["keys"]) == 8
-    assert got["kw"]["days"] == 90 and got["kw"]["video_days"] == 28 and got["kw"]["conn"] == "conn"
+    assert got["kw"]["days"] == 180 and got["kw"]["video_days"] == 28 and got["kw"]["conn"] == "conn"
 
 
 def test_cli_requires_target(monkeypatch):

@@ -20,7 +20,7 @@
 Actions 탭 → **daily** → Run workflow.
 
 - 평소: `backfill_days` 0 → `collect --all` (최근 10일).
-- 첫 실행: `backfill_days` = **90** → 과거 90일 채움.
+- 첫 실행: `backfill_days` = **180** → 과거 180일 채움(90일 비교에 이전 90일이 필요해서).
 - 자동 실행: 매일 KST 09:30.
 - 수집에 오류가 있어도 화면은 먼저 배포되고, 마지막 단계가 빨갛게 실패한다. 로그의 `errors=` 줄을 본다.
 
