@@ -1,0 +1,15 @@
+{
+ "kind": "youtube#liveStreamListResponse",
+ "items": [
+  {
+   "id": "strm0001",
+   "status": {
+    "streamStatus": "active",
+    "healthStatus": {
+     "status": "good",
+     "configurationIssues": []
+    }
+   }
+  }
+ ]
+}

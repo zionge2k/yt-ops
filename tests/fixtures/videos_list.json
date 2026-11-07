@@ -1,0 +1,82 @@
+{
+ "kind": "youtube#videoListResponse",
+ "items": [
+  {
+   "id": "vid00001",
+   "snippet": {
+    "title": "Scheduled long",
+    "publishedAt": "2026-11-05T00:00:00Z",
+    "thumbnails": {
+     "medium": {
+      "url": "https://example.test/vid00001.jpg"
+     }
+    }
+   },
+   "contentDetails": {
+    "duration": "PT1H2M3S"
+   },
+   "status": {
+    "privacyStatus": "private",
+    "publishAt": "2026-11-10T09:00:00Z"
+   }
+  },
+  {
+   "id": "vid00002",
+   "snippet": {
+    "title": "Short clip",
+    "publishedAt": "2026-11-04T03:00:00Z",
+    "thumbnails": {
+     "medium": {
+      "url": "https://example.test/vid00002.jpg"
+     }
+    }
+   },
+   "contentDetails": {
+    "duration": "PT17S"
+   },
+   "status": {
+    "privacyStatus": "public"
+   }
+  },
+  {
+   "id": "vid00003",
+   "snippet": {
+    "title": "Live archive",
+    "publishedAt": "2026-11-03T12:00:00Z",
+    "thumbnails": {
+     "medium": {
+      "url": "https://example.test/vid00003.jpg"
+     }
+    }
+   },
+   "contentDetails": {
+    "duration": "P0D"
+   },
+   "status": {
+    "privacyStatus": "public"
+   },
+   "liveStreamingDetails": {
+    "actualStartTime": "2026-11-03T12:00:00Z",
+    "concurrentViewers": "42"
+   }
+  },
+  {
+   "id": "vid00004",
+   "snippet": {
+    "title": "Long mix",
+    "publishedAt": "2026-11-02T08:00:00Z",
+    "thumbnails": {
+     "medium": {
+      "url": "https://example.test/vid00004.jpg"
+     }
+    }
+   },
+   "contentDetails": {
+    "duration": "PT2H29M54S"
+   },
+   "status": {
+    "privacyStatus": "public"
+   }
+  }
+ ]
+}
