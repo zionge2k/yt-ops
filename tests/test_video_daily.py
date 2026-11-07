@@ -71,3 +71,12 @@ def test_video_daily_chunk_shrinks_for_28_day_window():
     assert [call[4] for call in c.analytics.calls] == [
         "video==" + ",".join(ids[:35]), "video==" + ",".join(ids[35:])]
     assert all(call[5] == 1000 for call in c.analytics.calls)
+
+
+def test_video_daily_chunk_stays_below_cap():
+    # 20 days x 50 ids would be exactly 1000 rows = the cap (TruncationError); 49 ids max
+    c = ctx([], n=60)
+    video_daily.collect(c, date(2026, 11, 1), date(2026, 11, 20))
+    ids = c.data.ids
+    assert [call[4] for call in c.analytics.calls] == [
+        "video==" + ",".join(ids[:49]), "video==" + ",".join(ids[49:])]

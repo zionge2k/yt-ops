@@ -20,7 +20,8 @@ MAX_ROWS = 1000
 def collect(ctx: CollectContext, start: date, end: date) -> dict[str, list[dict]]:
     ids = [item["id"] for item in ctx.data.uploads()]
     n_days = (end - start).days + 1
-    chunk = max(1, min(FILTER_CHUNK, MAX_ROWS // n_days))
+    # rows per query = ids x days must stay strictly below MAX_ROWS
+    chunk = max(1, min(FILTER_CHUNK, (MAX_ROWS - 1) // n_days))
     result = []
     for i in range(0, len(ids), chunk):
         result.extend(ctx.analytics.query(

@@ -179,3 +179,21 @@ def test_subs_inputs_merges_current_rows_and_coalesces_none():
     baseline, daily, latest = runner.subs_inputs("c", "a2p", fetch=fake_fetch, current_rows=cur)
     assert daily == [(date(2026, 9, 2), 4, 0), (date(2026, 9, 3), 0, 2)]
     assert latest == date(2026, 9, 3)
+
+
+def test_default_today_is_kst_date(monkeypatch):
+    # 2026-11-06 20:00 UTC is already 2026-11-07 in Seoul
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 11, 6, 20, 0, tzinfo=timezone.utc).astimezone(tz)
+
+    seen = {}
+    monkeypatch.setattr(runner, "datetime", FixedDatetime)
+    monkeypatch.setattr(runner, "COLLECTORS", [("channel_daily", SimpleNamespace(
+        collect=lambda ctx, s, e: seen.update(today=ctx.today, end=e) or {}))])
+    monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
+    monkeypatch.setattr(runner, "data_for_key", lambda k: "x")
+    monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": "A"})
+    runner.run_collect(["a2p"], dry_run=True)
+    assert seen["today"] == date(2026, 11, 7) and seen["end"] == date(2026, 11, 6)

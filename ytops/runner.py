@@ -4,6 +4,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from psycopg.types.json import Jsonb
 
@@ -93,7 +94,8 @@ def run_collect(
     today: date | None = None,
 ) -> RunResult:
     started_at = datetime.now(timezone.utc)
-    today = today or started_at.date()
+    # calendar "today" is the Seoul date, same as render/commands
+    today = today or datetime.now(ZoneInfo("Asia/Seoul")).date()
     start, end, video_start = today - timedelta(days=days), today - timedelta(days=1), today - timedelta(days=video_days)
     channels = load_channels()
     result = RunResult(uuid.uuid4().hex, started_at, None)
