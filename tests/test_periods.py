@@ -31,9 +31,10 @@ def test_pct_change_negative_prev():
 def test_half_trend_splits_window():
     # first half 1+1, second half 2+2 -> +100%
     assert periods.half_trend([1, 1, 2, 2]) == 100.0
-    # odd length: middle day goes to the second half ([1] vs [1, 1])
-    assert periods.half_trend([1, 1, 1]) == 100.0
-    assert periods.half_trend([2, None, 1, 1]) == 0.0  # None skipped
+    # odd length: the middle day is dropped ([1] vs [1]) -> flat
+    assert periods.half_trend([1, 1, 1]) == 0.0
+    # None skipped per half, means compared: first mean 2/1 = 2.0, second mean (1+1)/2 = 1.0 -> -50%
+    assert periods.half_trend([2, None, 1, 1]) == -50.0
     assert periods.half_trend([None, None, 1, 1]) is None
     assert periods.half_trend([0, 0, 1, 1]) is None  # first half total 0
     assert periods.half_trend([5]) is None and periods.half_trend([]) is None
@@ -54,3 +55,13 @@ def test_compare_window_is_at_least_four_weeks():
     assert periods.compare_window(w28) == periods.previous(w28)
     w90 = periods.window(date(2026, 11, 4), 90)
     assert periods.compare_window(w90) == periods.previous(w90)
+
+
+def test_half_trend_flat_odd_window_is_zero():
+    assert periods.half_trend([1] * 7) == 0.0
+    assert periods.half_trend([1] * 365) == 0.0
+
+
+def test_half_trend_unequal_valid_days_uses_means():
+    # first half [1, None] mean 1.0, second half [1, 1] mean 1.0 -> flat (sums would say +100%)
+    assert periods.half_trend([1, None, 1, 1]) == 0.0

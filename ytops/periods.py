@@ -28,21 +28,22 @@ def pct_change(cur: float | None, prev: float | None) -> float | None:
 
 
 def half_trend(values) -> float | None:
-    """Percent change of the second half of a window over the first half.
+    """Percent change of the second half's mean over the first half's mean.
 
-    values: daily numbers in date order (None = no data, skipped). The window is split in
-    two (the middle day goes to the second half when the length is odd). None when there
-    are fewer than two values or the first half has no usable total.
+    values: daily numbers in date order (None = no data, skipped per half). The middle day
+    is dropped when the length is odd so both halves cover the same number of days; means
+    (not sums) are compared so halves with a different count of valid days stay comparable.
+    None when there are fewer than two values or either half has no usable value.
     """
     vals = list(values)
     if len(vals) < 2:
         return None
     mid = len(vals) // 2
     first = [v for v in vals[:mid] if v is not None]
-    second = [v for v in vals[mid:] if v is not None]
+    second = [v for v in vals[-mid:] if v is not None]
     if not first or not second:
         return None
-    return pct_change(sum(second), sum(first))
+    return pct_change(sum(second) / len(second), sum(first) / len(first))
 
 
 def color_of(pct: float | None, up: float, down: float) -> str:

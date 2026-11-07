@@ -224,7 +224,8 @@ def test_watch_trend_windows(monkeypatch):
     assert set(w) == {"365", "28", "7"}
     assert w["7"]["start"] == "2026-10-29" and w["7"]["end"] == "2026-11-04"
     assert [s["hours"] for s in w["7"]["series"]] == [2.0, 2.0, 2.0, 2.0, 2.0, 1.0, 2.0]
-    assert w["7"]["total"] == 13.0 and w["7"]["status"] == "red"  # first 3 days 6.0 vs last 4 days 7.0 -> +16.7%
+    assert w["7"]["total"] == 13.0 and w["7"]["status"] == "blue"
+    # 7 days: middle day dropped; first 3 mean (2+2+2)/3 = 2.0, last 3 mean (2+1+2)/3 = 1.667 -> -16.7% -> blue
     assert w["28"]["total"] == 19.0 and len(w["28"]["series"]) == 28 and w["28"]["series"][0]["hours"] is None
     assert w["365"]["start"] == "2026-10-01" and len(w["365"]["series"]) == 35
     # shorts minutes never count
