@@ -88,10 +88,11 @@ function renderScorecards() {
   const per = DATA.periods[period];
   const cards = DATA.channels.map((ch) => {
     const m = per.channels[ch.key];
-    const sub = ch.subscribers ? (isNull(ch.subscribers.exact) ? ch.subscribers.api : ch.subscribers.exact) : null;
+    const fromExact = ch.subscribers && !isNull(ch.subscribers.exact);
+    const sub = ch.subscribers ? (fromExact ? ch.subscribers.exact : ch.subscribers.api) : null;
     return `<div class="card">
       <h3>${DOT[m.views.status] || "⚪"} ${esc(ch.display)}</h3>
-      ${metricRow("구독자", "🔵", fmt(sub), null)}
+      ${metricRow("구독자", fromExact ? "➗" : "🔵", fmt(sub), null)}
       ${metricRow("기간 순증", "⏳", fmt(m.subs_net.cur), m.subs_net)}
       ${metricRow("조회수", "⏳", fmt(m.views.cur), m.views)}
       ${metricRow("쇼츠 제외 시청시간", "⏳", fmt(m.watch_hours.cur, 1), m.watch_hours, "시간")}

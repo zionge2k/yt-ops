@@ -14,14 +14,18 @@ def exact_subscribers(
 ) -> int | None:
     """Exact subscribers, or None when unknowable.
 
-    baseline: (day, exact count) saved while the channel was under 1,000.
-    daily: (day, gained, lost) rows. Only days in (baseline day, latest_day]
+    Under 1,000 the API value is exact, so it wins over any baseline.
+    baseline: (day, exact count) saved while the channel was under 1,000. The
+    snapshot is taken ~00:30 UTC, so the baseline day's own gains come after it.
+    daily: (day, gained, lost) rows. Only days in [baseline day, latest_day]
     are applied; later days are unknown and left out.
     """
+    if api_now < ROUNDING_FLOOR:
+        return api_now
     if baseline is None:
-        return api_now if api_now < ROUNDING_FLOOR else None
+        return None
     base_day, base_count = baseline
     if latest_day is None:
         return base_count
-    delta = sum(g - l for d, g, l in daily if base_day < d <= latest_day)
+    delta = sum(g - l for d, g, l in daily if base_day <= d <= latest_day)
     return base_count + delta

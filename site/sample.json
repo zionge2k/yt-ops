@@ -18,7 +18,7 @@
    "is_live": true,
    "subscribers": {
     "api": 990,
-    "exact": 937
+    "exact": 990
    },
    "errors": []
   },
@@ -3848,8 +3848,8 @@
  },
  "monetization": {
   "soombi": {
-   "subs_exact": 937,
-   "subs_pct": 93.7,
+   "subs_exact": 990,
+   "subs_pct": 99.0,
    "hours_approx": 1170.0,
    "hours_pct": 29.2,
    "official": null

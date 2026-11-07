@@ -94,7 +94,34 @@ def test_subs_exact_uses_this_runs_rows_before_db_write(monkeypatch):
     seen = {}
     monkeypatch.setattr(runner.store, "upsert", lambda conn, t, rows, pk, keep=(): seen.setdefault(t, rows) and len(rows))
     runner.run_collect(["a2p"], dry_run=False, conn=object(), today=TODAY)
-    assert seen["yt_subs_snapshot"][0]["exact_subscribers"] == 900 + (5 - 1) + (2 - 0)
+    # api 990 < 1000 is exact already; the baseline is not used
+    assert seen["yt_subs_snapshot"][0]["exact_subscribers"] == 990
+
+
+def test_subs_exact_over_1000_uses_this_runs_rows(monkeypatch):
+    base = date(2026, 11, 1)
+    monkeypatch.setattr(runner, "COLLECTORS", [
+        ("channel_daily", SimpleNamespace(collect=lambda ctx, s, e: {"yt_channel_daily": [
+            {"channel_key": "a2p", "day": date(2026, 11, 1), "subs_gained": 3, "subs_lost": 0},
+            {"channel_key": "a2p", "day": date(2026, 11, 2), "subs_gained": 5, "subs_lost": 1}]})),
+        ("subs", runner.subs),
+    ])
+    monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
+    monkeypatch.setattr(runner, "data_for_key", lambda k: SimpleNamespace(
+        channel_stats=lambda: {"statistics": {"subscriberCount": "1000"}}))
+    monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": "A"})
+
+    def fake_fetch(conn, sql, params=()):
+        if "yt_subs_snapshot" in sql:
+            return [{"taken_on": base, "api_subscribers": 998}]
+        return [{"latest": None}] if "max(day)" in sql else []
+
+    monkeypatch.setattr(runner, "subs_inputs", lambda conn, key, current_rows=(), _f=runner.subs_inputs: _f(conn, key, fake_fetch, current_rows))
+    seen = {}
+    monkeypatch.setattr(runner.store, "upsert", lambda conn, t, rows, pk, keep=(): seen.setdefault(t, rows) and len(rows))
+    runner.run_collect(["a2p"], dry_run=False, conn=object(), today=TODAY)
+    # baseline day 11-01 is included (inclusive lower bound)
+    assert seen["yt_subs_snapshot"][0]["exact_subscribers"] == 998 + 3 + 4
 
 
 def test_video_first_seen_filled(monkeypatch):
@@ -117,10 +144,11 @@ def test_subs_inputs_from_fake_fetch():
          {"day": date(2026, 9, 3), "subs_gained": 2, "subs_lost": 0}],
         [{"latest": date(2026, 9, 3)}],
     ]
-    seen = []
+    seen, sqls = [], []
 
     def fake_fetch(conn, sql, params=()):
         seen.append(params)
+        sqls.append(sql)
         return answers[len(seen) - 1]
 
     baseline, daily, latest = runner.subs_inputs("conn", "a2p", fetch=fake_fetch)
@@ -128,6 +156,7 @@ def test_subs_inputs_from_fake_fetch():
     assert daily == [(date(2026, 9, 2), 3, 1), (date(2026, 9, 3), 2, 0)]
     assert latest == date(2026, 9, 3)
     assert seen[0] == ("a2p",) and seen[1] == ("a2p", date(2026, 9, 1))
+    assert "day >= %s" in sqls[1]  # the baseline day itself is included
 
 
 def test_subs_inputs_no_baseline():

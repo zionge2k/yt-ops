@@ -56,7 +56,7 @@ def subs_inputs(conn, key: str, fetch=store.fetch, current_rows=()):
             for r in fetch(
                 conn,
                 "select day, subs_gained, subs_lost from yt_channel_daily "
-                "where channel_key = %s and day > %s order by day",
+                "where channel_key = %s and day >= %s order by day",
                 (key, baseline[0]),
             ):
                 db_daily[r["day"]] = (r["subs_gained"], r["subs_lost"])
@@ -67,7 +67,7 @@ def subs_inputs(conn, key: str, fetch=store.fetch, current_rows=()):
         merged[r["day"]] = (r["subs_gained"], r["subs_lost"])
     # a day missing from the totals query leaves None; treat as 0 gained/lost
     daily = [(d, g or 0, l or 0) for d, (g, l) in sorted(merged.items())
-             if baseline is None or d > baseline[0]]
+             if baseline is None or d >= baseline[0]]
     days = [d for d in (db_latest, *(r["day"] for r in current_rows)) if d is not None]
     return baseline, daily, (max(days) if days else None)
 

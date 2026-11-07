@@ -9,10 +9,18 @@ def test_exact_subscribers_after_rounding():
     assert got == 1005
 
 
-def test_baseline_ignores_days_outside_window():
-    daily = [(date(2026, 11, 1), 50, 0), (date(2026, 11, 2), 5, 1), (date(2026, 11, 4), 9, 0)]
+def test_baseline_day_counts_and_later_days_ignored():
+    # the snapshot is taken ~00:30 UTC, so the baseline day's own gains come after it
+    daily = [(date(2026, 10, 31), 70, 0), (date(2026, 11, 1), 50, 0), (date(2026, 11, 2), 5, 1),
+             (date(2026, 11, 4), 9, 0)]
     got = exact_subscribers((date(2026, 11, 1), 998), daily, date(2026, 11, 3), 1000)
-    assert got == 1002
+    assert got == 998 + 50 + 4
+
+
+def test_under_1000_uses_api_even_with_stale_baseline():
+    # baseline from yesterday, Analytics 3 days behind: today's exact API value wins
+    daily = [(date(2026, 11, 3), 5, 0)]
+    assert exact_subscribers((date(2026, 11, 6), 900), daily, date(2026, 11, 4), 990) == 990
 
 
 def test_baseline_without_new_days_returns_baseline():
