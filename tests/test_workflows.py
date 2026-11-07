@@ -26,3 +26,9 @@ def test_live_does_not_apply_schema():
     assert "schema --apply" not in _text("live.yml")
     assert "schema --apply" in _text("daily.yml")
 
+
+
+def test_daily_keep_alive_enables_both_workflows():
+    daily = _text("daily.yml")
+    assert "workflows/daily.yml/enable" in daily
+    assert "workflows/live.yml/enable" in daily

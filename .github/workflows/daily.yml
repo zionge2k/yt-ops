@@ -113,7 +113,9 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh api -X PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/daily.yml/enable"
+        run: |
+          gh api -X PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/daily.yml/enable"
+          gh api -X PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/live.yml/enable"
 
       - name: 수집 오류 알림
         if: steps.collect.outcome == 'failure'
