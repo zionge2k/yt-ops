@@ -250,10 +250,20 @@ def test_detail_top_videos_and_genres(monkeypatch):
 
 def test_detail_subs_sources(monkeypatch):
     s = _build(monkeypatch)["detail"]["soombi"]["subs_sources"]
-    # 28-day window: 10 days x (5 gained: 3 shorts, 1 vod, 0 live -> 1 other), 10 lost
-    assert s == {"days": 28, "shorts": 30, "vod": 10, "live": 0, "other": 10, "lost": 10}
+    # 28-day window, 10 days with data x (5 gained: 3 shorts, 1 vod, 0 live -> 1 other), 10 lost
+    assert s == {"days": 10, "shorts": 30, "vod": 10, "live": 0, "other": 10, "lost": 10}
     assert _build(monkeypatch)["detail"]["groovewav"]["subs_sources"] == {
-        "days": 28, "shorts": None, "vod": None, "live": None, "other": None, "lost": None}
+        "days": 0, "shorts": None, "vod": None, "live": None, "other": None, "lost": None}
+
+
+def test_subs_sources_skip_days_without_split(monkeypatch):
+    # 10 days with the full split (5 gained = 3 shorts + 1 vod + 0 live + 1 other) and 18 older
+    # days from before the split columns existed (gained 5, split None): they must not inflate "other"
+    rows = list(_daily())
+    for i in range(10, 28):
+        rows.append(_day_row("soombi", LATEST - timedelta(days=i), views=1, subs_gained=5, subs_lost=1))
+    s = _build(monkeypatch, yt_channel_daily=sorted(rows, key=lambda r: r["day"]))["detail"]["soombi"]["subs_sources"]
+    assert s["days"] == 10 and s["other"] == 10 and s["shorts"] == 30 and s["vod"] == 10 and s["live"] == 0
 
 
 def test_detail_audience(monkeypatch):

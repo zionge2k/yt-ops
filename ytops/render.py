@@ -265,12 +265,17 @@ def _genres(per_video, videos, playlists, items) -> list[dict]:
 
 
 def _subs_sources(rows) -> dict:
-    gained = _sum(r.get("subs_gained") for r in rows)
-    shorts = _sum(r.get("subs_gained_shorts") for r in rows)
-    vod = _sum(r.get("subs_gained_vod") for r in rows)
-    live = _sum(r.get("subs_gained_live") for r in rows)
-    other = None if gained is None else max(0, gained - (shorts or 0) - (vod or 0) - (live or 0))
-    return {"days": RECENT_DAYS, "shorts": shorts, "vod": vod, "live": live, "other": other,
+    """Where new subscribers came from. Only days with the whole split (gained, shorts, vod,
+    live all known) count, so days collected before the split columns existed cannot inflate "other"."""
+    split = [r for r in rows
+             if all(r.get(c) is not None for c in
+                    ("subs_gained", "subs_gained_shorts", "subs_gained_vod", "subs_gained_live"))]
+    gained = _sum(r["subs_gained"] for r in split)
+    shorts = _sum(r["subs_gained_shorts"] for r in split)
+    vod = _sum(r["subs_gained_vod"] for r in split)
+    live = _sum(r["subs_gained_live"] for r in split)
+    other = None if gained is None else max(0, gained - shorts - vod - live)
+    return {"days": len(split), "shorts": shorts, "vod": vod, "live": live, "other": other,
             "lost": _sum(r.get("subs_lost") for r in rows)}
 
 
