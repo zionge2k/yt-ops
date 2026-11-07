@@ -74,13 +74,14 @@ def _safe_fetch(conn, sql, params=()):
         return []
 
 
-FAILED_STAGES = ("client", "channel_daily")
+# Only stages feeding the card's own numbers fail the channel; errors of side tables
+# (playlists, audience, live snapshot) stay in the error list.
+FAILED_STAGES = ("client", "channel_daily", "subs", "store:yt_channel_daily", "store:yt_subs_snapshot")
 
 
 def _failed(stage) -> bool:
-    """Collection or DB-write failures make a channel's numbers untrustworthy."""
-    stage = stage or ""
-    return stage in FAILED_STAGES or stage.startswith("store:")
+    """Collection or DB-write failures of the card's core numbers make them untrustworthy."""
+    return (stage or "") in FAILED_STAGES
 
 
 def _channel_errors(runs, key) -> list[dict]:

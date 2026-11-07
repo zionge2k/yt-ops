@@ -298,6 +298,16 @@ def test_collect_failed_flag_from_run_log(monkeypatch):
     assert flags["backthen"] is False and flags["soombi"] is False
 
 
+def test_playlist_store_error_does_not_fail_channel(monkeypatch):
+    log = [{"run_id": "r", "errors": [
+        {"channel": "soombi", "stage": "store:yt_playlist_item", "error": "OperationalError"},
+        {"channel": "a2p", "stage": "store:yt_subs_snapshot", "error": "OperationalError"}]}]
+    d = _build(monkeypatch, yt_run_log=log)
+    flags = {c["key"]: c["collect_failed"] for c in d["channels"]}
+    assert flags["soombi"] is False and flags["a2p"] is True
+    assert [e["stage"] for e in d["errors"]] == ["store:yt_playlist_item", "store:yt_subs_snapshot"]
+
+
 def test_failed_channel_has_no_h48_comparison(monkeypatch):
     log = [{"run_id": "r", "errors": [{"channel": "soombi", "stage": "channel_daily", "error": "HttpError"}]}]
     h = _build(monkeypatch, yt_run_log=log)["board"]["soombi"]["h48"]
