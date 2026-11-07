@@ -8,10 +8,17 @@ def window(latest_day: date, days: int) -> tuple[date, date]:
     return latest_day - timedelta(days=days - 1), latest_day
 
 
-def previous(win: tuple[date, date]) -> tuple[date, date]:
+def compare_window(win: tuple[date, date], min_days: int = 28) -> tuple[date, date]:
+    """The stretch a window is judged against: the days just before it, at least
+    min_days long, so a short window is compared with a multi-week average instead
+    of one noisy week (2026-11-07 decision)."""
     start, _ = win
-    length = (win[1] - start).days + 1
+    length = max((win[1] - start).days + 1, min_days)
     return start - timedelta(days=length), start - timedelta(days=1)
+
+
+def previous(win: tuple[date, date]) -> tuple[date, date]:
+    return compare_window(win, min_days=1)
 
 
 def pct_change(cur: float | None, prev: float | None) -> float | None:

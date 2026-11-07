@@ -52,7 +52,10 @@ def period_summary(rows, win, prev_win, extract, up, down) -> dict:
                 for d in (w[0] + timedelta(days=i) for i in range(days))]
 
     spark = [_num(v) for v in values(win)]
-    cur, prev = _sum(spark), _sum(values(prev_win))
+    cur, prev_total = _sum(spark), _sum(values(prev_win))
+    # prev_win may be longer than win (4-week baseline): scale it to the window length
+    scale = len(spark) / ((prev_win[1] - prev_win[0]).days + 1)
+    prev = None if prev_total is None else round(prev_total * scale, 1)
     pct = periods.pct_change(cur, prev)
     return {"cur": cur, "prev": prev, "pct": pct, "status": periods.status_of(pct, up, down), "spark": spark}
 
@@ -179,7 +182,7 @@ def build(conn, *, today: date, config) -> dict:
     wins = {p: periods.window(latest, p) if latest else None for p in PERIODS}
     out_periods = {}
     for p, w in wins.items():
-        pw = periods.previous(w) if w else None
+        pw = periods.compare_window(w) if w else None
         out_periods[str(p)] = {
             "start": w[0] if w else None, "end": w[1] if w else None,
             "prev_start": pw[0] if pw else None, "prev_end": pw[1] if pw else None,

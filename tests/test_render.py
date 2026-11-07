@@ -86,7 +86,8 @@ def test_build_shape_from_fake_rows(monkeypatch):
     assert set(p7) == {"start", "end", "prev_start", "prev_end", "channels"}
     m = p7["channels"]["soombi"]
     assert set(m) == {"views", "subs_net", "watch_hours"}
-    assert m["views"]["pct"] == 25.0 and m["views"]["status"] == "green"
+    # 7-day baseline = 10-01..10-28 total (7 + 80 = 87) scaled to 7 days = 21.8
+    assert m["views"]["prev"] == 21.8 and m["views"]["pct"] == 358.7 and m["views"]["status"] == "green"
     assert m["views"]["cur"] == 100 and len(m["views"]["spark"]) == 7 and m["views"]["spark"][-1] == 100
     assert m["watch_hours"]["cur"] == 2.0 and m["subs_net"]["cur"] == 4
     assert d["periods"]["28"]["channels"]["soombi"]["views"]["cur"] == 180
@@ -120,8 +121,18 @@ def _build(monkeypatch, **override):
     return json.loads(json.dumps(render.build(None, today=TODAY, config=_cfg()), default=render._json_default))
 
 
+def test_period_summary_scales_prev_to_window_length():
+    # 7-day window judged against the 28 days before it, scaled to 7 days
+    win = (date(2026, 10, 29), date(2026, 11, 4))
+    cmp_win = (date(2026, 10, 1), date(2026, 10, 28))
+    rows = [_day_row("soombi", date(2026, 10, 1) + timedelta(days=i), views=4) for i in range(28)]
+    rows += [_day_row("soombi", date(2026, 10, 29) + timedelta(days=i), views=1) for i in range(7)]
+    s = render.period_summary(rows, win, cmp_win, lambda r: r["views"], 5.0, -5.0)
+    assert s["cur"] == 7 and s["prev"] == 28.0 and s["pct"] == -75.0 and s["status"] == "red"
+
+
 def test_period_prev_none_when_history_too_short(monkeypatch):
-    # history starts 10-25, after the 7-day prev window start (10-22): no comparison
+    # history starts 10-25, after the 7-day compare window start (10-01): no comparison
     rows = [_day_row("soombi", date(2026, 11, 4), views=100), _day_row("soombi", date(2026, 10, 25), views=80)]
     d = _build(monkeypatch, yt_channel_daily=rows)
     v = d["periods"]["7"]["channels"]["soombi"]["views"]

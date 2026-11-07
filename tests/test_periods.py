@@ -26,3 +26,12 @@ def test_status_thresholds():
 def test_pct_change_negative_prev():
     assert periods.pct_change(4, -2) == 300.0
     assert periods.pct_change(-4, -2) == -100.0
+
+
+def test_compare_window_is_at_least_four_weeks():
+    w7 = periods.window(date(2026, 11, 4), 7)
+    assert periods.compare_window(w7) == (date(2026, 10, 1), date(2026, 10, 28))
+    w28 = periods.window(date(2026, 11, 4), 28)
+    assert periods.compare_window(w28) == periods.previous(w28)
+    w90 = periods.window(date(2026, 11, 4), 90)
+    assert periods.compare_window(w90) == periods.previous(w90)
