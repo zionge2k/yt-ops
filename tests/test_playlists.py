@@ -71,3 +71,15 @@ def test_small_shortfall_is_tolerated():
     c = CollectContext("soombi", CH, None, data, TODAY, NOW)
     out = playlists.collect(c, TODAY, TODAY)
     assert len(out["yt_playlist_item"]) == 2
+
+
+def test_duplicate_items_are_not_truncation():
+    # itemCount counts a video listed twice: 20 listed, 3 of them repeats -> 17 distinct, not truncated
+    listed = [_item(f"v{i}") for i in range(17)] + [_item("v0"), _item("v1"), _item("v2")]
+    data = FakeData(
+        [{"id": "pl1", "snippet": {"title": "Dup"}, "contentDetails": {"itemCount": 20}}],
+        {"pl1": listed},
+    )
+    c = CollectContext("soombi", CH, None, data, TODAY, NOW)
+    out = playlists.collect(c, TODAY, TODAY)
+    assert len(out["yt_playlist_item"]) == 17

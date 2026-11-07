@@ -21,7 +21,8 @@ def collect(ctx: CollectContext, start: date, end: date) -> dict[str, list[dict]
             "seen_at": ctx.collected_at,
         })
         seen: set[str] = set()
-        for it in ctx.data.playlist_items(pid):
+        listed = ctx.data.playlist_items(pid)
+        for it in listed:
             vid = it.get("contentDetails", {}).get("videoId")
             if vid and vid not in seen:  # a playlist may list a video twice
                 seen.add(vid)
@@ -29,6 +30,6 @@ def collect(ctx: CollectContext, start: date, end: date) -> dict[str, list[dict]
         # Replace tables: a short read must fail the run, not wipe good rows.
         expected = p.get("contentDetails", {}).get("itemCount")
         if (isinstance(expected, int) and expected >= MIN_CHECKED_ITEMS
-                and len(seen) < TRUNCATION_RATIO * expected):
-            raise RuntimeError(f"playlist {pid} truncated: {len(seen)}/{expected}")
+                and len(listed) < TRUNCATION_RATIO * expected):  # raw count: itemCount includes repeats
+            raise RuntimeError(f"playlist {pid} truncated: {len(listed)}/{expected}")
     return {"yt_playlist": playlists, "yt_playlist_item": items}
