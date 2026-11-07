@@ -14,12 +14,20 @@ class FakeAnalytics:
         self.rows, self.calls = rows, []
 
     def query(self, start, end, dims, metrics, filters=None, sort=None, max_results=200):
-        self.calls.append((start, end, dims, metrics, max_results))
+        self.calls.append((start, end, dims, metrics, filters, max_results))
         return self.rows
 
 
-def ctx(rows):
-    return CollectContext("soombi", CH, FakeAnalytics(rows), None, TODAY, NOW)
+class FakeData:
+    def __init__(self, n):
+        self.ids = [f"v{i:03d}" for i in range(n)]
+
+    def uploads(self, max_items=None):
+        return [{"id": i} for i in self.ids]
+
+
+def ctx(rows, n=1):
+    return CollectContext("soombi", CH, FakeAnalytics(rows), FakeData(n), TODAY, NOW)
 
 
 def test_video_daily_rows():
@@ -37,8 +45,20 @@ def test_video_daily_rows():
     assert c.analytics.calls == [(
         date(2026, 11, 1), date(2026, 11, 2), "video,day",
         "views,engagedViews,estimatedMinutesWatched,averageViewDuration,"
-        "averageViewPercentage,subscribersGained,subscribersLost", 200)]
+        "averageViewPercentage,subscribersGained,subscribersLost", "video==v000", 200)]
 
 
 def test_video_daily_empty():
+    c = ctx([], n=0)
+    assert video_daily.collect(c, TODAY, TODAY) == {"yt_video_daily": []}
+    assert c.analytics.calls == []
     assert video_daily.collect(ctx([]), TODAY, TODAY) == {"yt_video_daily": []}
+
+
+def test_video_daily_chunks_filter_by_50():
+    c = ctx([], n=60)
+    video_daily.collect(c, date(2026, 11, 1), date(2026, 11, 2))
+    ids = c.data.ids
+    assert [call[4] for call in c.analytics.calls] == [
+        "video==" + ",".join(ids[:50]), "video==" + ",".join(ids[50:])]
+    assert all(call[2] == "video,day" and call[5] == 200 for call in c.analytics.calls)

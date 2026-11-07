@@ -1,11 +1,11 @@
 from datetime import date, datetime, timezone
 
-from tests.fakes import fixture
+from tests.fakes import fixture, http_error
 from ytops.collect import live
 from ytops.collect.context import CollectContext
 from ytops.registry import Channel
 
-CH = Channel("soombi", "soombi", "UC1", False, 0, 0, "chalna")
+CH = Channel("soombi", "soombi", "UC1", True, 0, 0, "chalna")
 TODAY = date(2026, 11, 7)
 NOW = datetime(2026, 11, 7, 1, 0, tzinfo=timezone.utc)
 
@@ -16,6 +16,8 @@ class FakeData:
         self.calls = []
 
     def active_broadcasts(self):
+        if isinstance(self.broadcasts, Exception):
+            raise self.broadcasts
         return self.broadcasts
 
     def videos(self, ids):
@@ -68,3 +70,29 @@ def test_live_concurrent_none_not_zero():
     assert (row["health"], row["stream_status"]) == (None, None)
     zero = FakeData(fixture("broadcasts_active.json")["items"], [_video({"concurrentViewers": "0"})])
     assert live.collect(ctx(zero), TODAY, TODAY)["yt_live_snapshot"][0]["concurrent"] == 0
+
+
+def test_live_skips_api_when_not_live_channel():
+    off = Channel("urachacha", "urachacha", "UC2", False, 0, 0, "morrow")
+    data = FakeData(http_error(500))
+    c = CollectContext("urachacha", off, None, data, TODAY, NOW)
+    row = live.collect(c, TODAY, TODAY)["yt_live_snapshot"][0]
+    assert (row["channel_key"], row["broadcast_id"], row["life_cycle"]) == ("urachacha", None, "none")
+    assert data.calls == []
+
+
+def test_live_403_yields_none_row():
+    rows = live.collect(ctx(FakeData(http_error(403))), TODAY, TODAY)["yt_live_snapshot"]
+    assert rows == [{
+        "channel_key": "soombi", "taken_at": NOW, "broadcast_id": None, "life_cycle": "none",
+        "concurrent": None, "health": None, "stream_status": None, "actual_start": None,
+        "title": None,
+    }]
+
+
+def test_live_other_http_error_propagates():
+    import pytest
+    from googleapiclient.errors import HttpError
+
+    with pytest.raises(HttpError):
+        live.collect(ctx(FakeData(http_error(500))), TODAY, TODAY)

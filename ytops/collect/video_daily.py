@@ -11,8 +11,17 @@ _METRICS = (
 )
 
 
+# The Analytics API rejects video,day without a video filter; 50 ids per query is the tested max.
+FILTER_CHUNK = 50
+
+
 def collect(ctx: CollectContext, start: date, end: date) -> dict[str, list[dict]]:
-    result = ctx.analytics.query(start, end, "video,day", _METRICS, max_results=200)
+    ids = [item["id"] for item in ctx.data.uploads()]
+    result = []
+    for i in range(0, len(ids), FILTER_CHUNK):
+        result.extend(ctx.analytics.query(
+            start, end, "video,day", _METRICS,
+            filters="video==" + ",".join(ids[i:i + FILTER_CHUNK]), max_results=200))
     rows = [
         {
             "video_id": r["video"],
