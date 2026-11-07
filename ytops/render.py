@@ -177,28 +177,35 @@ def _h48(by_day, latest, up, down, comparable) -> dict:
 LIVE_STALE_AFTER = timedelta(hours=3)
 
 
-def _live_collecting(runs, key, now) -> bool:
-    """True when the newest run that ran `live` for this channel is recent and had no error for it."""
+def _live_run(runs, key) -> tuple[datetime, bool] | None:
+    """(started_at, healthy) of the newest run that ran `live` for this channel; None when there is none."""
     for r in runs:
         if _covers(r, key) and _ran_any(r, ("live",)):
             started = r.get("started_at")
+            if started is None:
+                return None
             bad = any(e.get("channel") == key and e.get("stage") in ("live", "client", "store:yt_live_snapshot")
                       for e in (r.get("errors") or []))
-            return started is not None and now - started <= LIVE_STALE_AFTER and not bad
-    return False
+            return started, not bad
+    return None
 
 
-def _live_state(rows, now, collecting=False) -> dict | None:
+def _live_state(rows, now, run=None) -> dict | None:
     """State from the channel's newest snapshot; only active broadcasts leave rows.
 
-    A snapshot older than LIVE_STALE_AFTER (or none at all) means off-air when live runs are
-    healthy (`collecting`), otherwise the state is unknown (on=None) rather than a stale "on air".
+    run: `_live_run` of the channel. A healthy live run that started after the snapshot saw no
+    broadcast (it would have written a row), so the channel is off-air. Without such a run the
+    snapshot counts as current for LIVE_STALE_AFTER; older than that (or none at all) means
+    off-air when the newest live run is recent and healthy, otherwise unknown (on=None).
     """
     unknown = {"on": None, "dual": False, "count": 0, "viewers": None, "views": None,
                "title": None, "taken_at": None, "stale": False}
     taken_at = max((r["taken_at"] for r in rows), default=None)
+    started, healthy = run if run else (None, False)
+    if taken_at is not None and healthy and started > taken_at:
+        return {**unknown, "on": False, "taken_at": taken_at}
     if taken_at is None or now - taken_at > LIVE_STALE_AFTER:
-        if collecting:
+        if healthy and now - started <= LIVE_STALE_AFTER:
             return {**unknown, "on": False, "taken_at": taken_at}
         return {**unknown, "taken_at": taken_at, "stale": taken_at is not None}
     active = [r for r in rows if r["taken_at"] == taken_at
@@ -399,7 +406,7 @@ def build(conn, *, today: date, config, now: datetime | None = None) -> dict:
         board[k] = {
             "subscribers": subs_n,
             "h48": _h48(by_day, latest, up, down, comparable),
-            "live": _live_state([r for r in live_rows if r["channel_key"] == k], now, _live_collecting(runs, k, now)) if ch.is_live else None,
+            "live": _live_state([r for r in live_rows if r["channel_key"] == k], now, _live_run(runs, k)) if ch.is_live else None,
             "health": health_of(monet),
             "monet": monet,
         }

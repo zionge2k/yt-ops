@@ -412,9 +412,24 @@ def test_last_daily_ok_at_ignores_live_only_runs(monkeypatch):
 
 
 def test_snapshot_under_three_hours_old_is_still_live(monkeypatch):
+    # no live run started after the snapshot: the 3-hour window decides
     rows = [{**r, "taken_at": r["taken_at"] - timedelta(hours=1, minutes=50)} for r in ROWS["yt_live_snapshot"]]
-    live = _build(monkeypatch, yt_live_snapshot=rows)["board"]["soombi"]["live"]
+    live = _build(monkeypatch, yt_live_snapshot=rows, yt_run_log=[])["board"]["soombi"]["live"]
     assert live["on"] is True and live["stale"] is False
+
+
+def test_ended_broadcast_is_off_after_next_healthy_live_run(monkeypatch):
+    # 10:00 run saw a broadcast, it ended, the 12:00 run wrote nothing: the old row must not read "on air"
+    rows = [{**r, "taken_at": NOW - timedelta(hours=2)} for r in ROWS["yt_live_snapshot"]]
+    log = [{"run_id": f"l{i}", "started_at": NOW - delta, "channels": list(render.ORDER),
+            "collectors": ["live"], "errors": [], "ok": True}
+           for i, delta in enumerate((timedelta(minutes=5), timedelta(hours=2, minutes=5)))]
+    live = _build(monkeypatch, yt_live_snapshot=rows, yt_run_log=log)["board"]["soombi"]["live"]
+    assert live["on"] is False and live["stale"] is False
+    # a later run that failed for this channel proves nothing: the snapshot window decides
+    bad = [{**log[0], "errors": [{"channel": "soombi", "stage": "live", "error": "HttpError"}]}, log[1]]
+    live = _build(monkeypatch, yt_live_snapshot=rows, yt_run_log=bad)["board"]["soombi"]["live"]
+    assert live["on"] is True
 
 
 def test_no_recent_snapshot_with_healthy_live_runs_is_off(monkeypatch):
