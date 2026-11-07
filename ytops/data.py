@@ -40,17 +40,23 @@ class DataClient:
             token = page.get("nextPageToken")
             if not token:
                 break
+        ids = list(dict.fromkeys(ids))  # a playlist may list a video more than once
         if max_items is not None:
             ids = ids[:max_items]
         return self.videos(ids)
 
     def videos(self, ids: list[str]) -> list[dict]:
+        ids = list(dict.fromkeys(ids))
         out: list[dict] = []
+        seen: set[str] = set()
         for i in range(0, len(ids), BATCH):
             resp = self._run(self._service.videos().list(
                 part="snippet,contentDetails,status,liveStreamingDetails",
                 id=",".join(ids[i:i + BATCH])))
-            out.extend(resp.get("items", []))
+            for item in resp.get("items", []):
+                if item.get("id") not in seen:
+                    seen.add(item.get("id"))
+                    out.append(item)
         return out
 
     def active_broadcasts(self) -> list[dict]:

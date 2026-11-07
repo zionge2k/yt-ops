@@ -81,3 +81,34 @@ def test_stream_health():
     assert c.stream_health("strm0001")["healthStatus"]["status"] == "good"
     assert svc.kwargs("liveStreams.list")[0] == dict(part="status", id="strm0001")
     assert c.stream_health("none") == {}
+
+
+def _ids(a, b):
+    return ",".join(f"vid{i:05d}" for i in range(a, b))
+
+
+def test_uploads_pages_do_not_repeat():
+    svc = FakeService(
+        channels__list=[CHANNEL],
+        playlistItems__list=[_pl(0, 50, "t1"), _pl(50, 50, "t2"), _pl(100, 20)],
+        videos__list=[_vids(_ids(0, 50)), _vids(_ids(50, 100)), _vids(_ids(100, 120))],
+    )
+    items = client(svc).uploads()
+    assert len(svc.kwargs("playlistItems.list")) == 3
+    assert len({i["id"] for i in items}) == len(items) == 120
+
+
+def test_uploads_dedupes_ids():
+    # playlist lists a video twice (across a page boundary and within a page)
+    p1 = _pl(0, 50, "t1")
+    p2 = _pl(49, 21)  # vid00049 repeated
+    p2["items"].append({"contentDetails": {"videoId": "vid00010"}})
+    svc = FakeService(
+        channels__list=[CHANNEL],
+        playlistItems__list=[p1, p2],
+        videos__list=[_vids(_ids(0, 50)), _vids(_ids(50, 70))],
+    )
+    items = client(svc).uploads()
+    sent = [i for kw in svc.kwargs("videos.list") for i in kw["id"].split(",")]
+    assert len(sent) == len(set(sent)) == 70
+    assert [i["id"] for i in items] == _ids(0, 70).split(",")
