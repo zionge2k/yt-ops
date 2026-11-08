@@ -10,6 +10,7 @@ GitHub Actions(매일 KST 09:30) → 수집 → Supabase(Postgres) → 암호화
 - 채널 목록과 계획은 `config/channels.toml`, 채널 ID는 `~/.config/yt-channels/channels.toml`(또는 `$YT_CHANNELS_HOME`)에서 읽는다.
 - 토큰·DB 주소는 저장소에 두지 않는다. `.env` 는 git 에서 제외된다.
 - 배포되는 데이터는 `site/data.enc`(암호화)뿐이다.
+- 상황판은 프로젝트별 YouTube Data API 사용량을 Cloud Monitoring 에서 읽어 보여준다(Workload Identity Federation, 키 없음).
 
 ## 쓰는 법
 
