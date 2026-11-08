@@ -227,7 +227,7 @@ function renderBoard() {
     }
     const h = b.h48 || {};
     return `<article class="card h-${esc(b.health || "grey")}">${head}
-      <div class="stat"><span class="k">구독자</span><span class="num n">${fmt(b.subscribers)}</span></div>
+      <div class="stat"><span class="k">구독자</span><span class="num n"${b.subscribers_approx ? ' title="유튜브가 세 자리까지만 알려 줘요 · 정확한 값은 2~3일 뒤"' : ""}>${b.subscribers_approx ? "≈ " : ""}${fmt(b.subscribers)}</span></div>
       <div class="stat"><span class="k">48시간 유효시청</span><span class="num n">${fmt(h.cur, 1)}${isNull(h.cur) ? "" : "<small>시간</small>"}</span><span class="chg n t-${esc(h.status || "grey")}">${pct(h.pct)}</span></div>
       ${liveBlock(ch, b)}
     </article>`;

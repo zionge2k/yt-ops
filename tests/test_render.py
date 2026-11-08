@@ -150,15 +150,25 @@ def test_v3_top_level_shape(monkeypatch):
 
 def test_board_h48_and_subscribers(monkeypatch):
     b = _build(monkeypatch)["board"]["soombi"]
-    assert set(b) == {"subscribers", "h48", "live", "health", "monet"}
-    assert b["subscribers"] == 905  # exact wins over api
+    assert set(b) == {"subscribers", "subscribers_approx", "h48", "live", "health", "monet"}
+    assert b["subscribers"] == 905 and b["subscribers_approx"] is False  # exact (905) above the api value (900)
     # 11-03 (1.0h) + 11-04 (2.0h) = 3.0 vs 11-01 + 11-02 = 4.0 -> -25%
     assert b["h48"] == {"cur": 3.0, "prev": 4.0, "pct": -25.0, "status": "blue", "days": ["2026-11-03", "2026-11-04"]}
     a2p = _build(monkeypatch)["board"]["a2p"]
-    assert a2p["subscribers"] == 1200  # api when exact is None
+    assert a2p["subscribers"] == 1200 and a2p["subscribers_approx"] is True  # api (rounded) when exact is None
     # behind the global latest day: current window shown, no comparison
     assert a2p["h48"]["cur"] == 2.0 and a2p["h48"]["prev"] is None and a2p["h48"]["status"] == "grey"
     assert _build(monkeypatch)["board"]["groovewav"]["h48"]["cur"] is None
+
+
+def test_board_subscribers_take_the_larger_of_exact_and_api(monkeypatch):
+    # JustSoombi 2026-11-09: baseline 957 (11/07) + Analytics deltas only up to 11/05 → "exact" 957 while the
+    # API already says 1,020. Both are lower bounds of the truth (lag vs. rounding), so the larger one wins.
+    snap = [{"channel_key": "soombi", "taken_on": date(2026, 11, 6),
+             "api_subscribers": 1020, "exact_subscribers": 957, "monetized": False}]
+    b = _build(monkeypatch, yt_subs_snapshot=snap)["board"]["soombi"]
+    assert b["subscribers"] == 1020 and b["subscribers_approx"] is True
+    assert b["monet"]["subs"] == 1020
 
 
 def test_board_live_state(monkeypatch):

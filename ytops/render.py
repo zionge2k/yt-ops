@@ -170,6 +170,20 @@ def _pct_of(value, goal):
     return None if value is None else min(round(value / goal * 100, 1), 100.0)
 
 
+def _best_subscribers(snapshot) -> tuple[int | None, bool]:
+    """(count, approx). The reconstructed exact count lags Analytics by ~3 days and the API value is rounded
+    down from 1,000 on, so both undershoot the truth: the larger one is always the better estimate.
+    approx is True when the shown number is the rounded API value."""
+    if snapshot is None:
+        return None, False
+    exact, api = snapshot.get("exact_subscribers"), snapshot.get("api_subscribers")
+    if exact is None:
+        return api, api is not None and api >= 1000
+    if api is not None and api > exact:
+        return api, True
+    return exact, False
+
+
 def _monet(subs_n, yearly_row, monetized) -> dict:
     hours = _round(_hours(yearly_row) if yearly_row else None, 1)
     return {"subs": subs_n, "subs_pct": _pct_of(subs_n, SUBS_GOAL),
@@ -416,13 +430,13 @@ def build(conn, *, today: date, config, now: datetime | None = None, quota: dict
                              "collect_failed": failed, "errors": ch_errors})
         by_day = by_ch[k]
         s = subs.get(k)
-        subs_n = None if s is None else (s["exact_subscribers"] if s["exact_subscribers"] is not None
-                                         else s["api_subscribers"])
+        subs_n, subs_approx = _best_subscribers(s)
         monet = _monet(subs_n, yearly.get(k), bool(s and s.get("monetized")))
         # a channel behind the global latest day (or whose collection failed) gets no comparison
         comparable = not failed and ch_latest[k] is not None and ch_latest[k] >= (latest or ch_latest[k])
         board[k] = {
             "subscribers": subs_n,
+            "subscribers_approx": subs_approx,
             "h48": _h48(by_day, latest, up, down, comparable),
             "live": _live_state([r for r in live_rows if r["channel_key"] == k], now, _live_run(runs, k)) if ch.is_live else None,
             "health": health_of(monet),
