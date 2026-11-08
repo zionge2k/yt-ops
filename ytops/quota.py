@@ -206,9 +206,10 @@ _ADC_TOKEN: list[str] = []
 
 
 def adc_token() -> str | None:
-    """Access token from Application Default Credentials (Workload Identity Federation on Actions), or None.
+    """Access token from Application Default Credentials, or None.
 
-    One token serves every project (the service account has monitoring.viewer on all of them), so it is cached.
+    On Actions, GOOGLE_APPLICATION_CREDENTIALS points at the authorized_user JSON of a read-only Google account.
+    One token serves every project (that account has monitoring.viewer on all of them), so it is cached.
     """
     if _ADC_TOKEN:
         return _ADC_TOKEN[0]
@@ -224,7 +225,7 @@ def adc_token() -> str | None:
 
 
 def token_for(project: str, accounts: list[str] | None) -> str:
-    """ADC first (keyless, used on Actions), the logged-in gcloud accounts second (a developer's Mac)."""
+    """ADC first (the read-only user credential file, used on Actions), the logged-in gcloud accounts second (a developer's Mac)."""
     return adc_token() or gcloud_token_for(project, accounts)
 
 

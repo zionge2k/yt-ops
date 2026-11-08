@@ -88,3 +88,8 @@ def test_tests_run_before_schema_and_collect():
 
 def test_test_workflow_has_no_secrets():
     assert "secrets." not in _text("test.yml")
+
+
+def test_readme_does_not_describe_workload_identity():
+    readme = (WF.parent.parent / "README.md").read_text(encoding="utf-8")
+    assert "Workload Identity" not in readme
