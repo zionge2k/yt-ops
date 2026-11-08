@@ -63,12 +63,14 @@ def test_every_piped_python_step_has_pipefail():
 def test_both_workflows_read_quota_before_render_and_pass_it():
     for name in ("daily.yml", "live.yml"):
         text = _text(name)
-        auth = _step_block(text, "google-github-actions/auth@v2")
+        auth = _step_block(text, "GCP_MONITOR_ADC")
         assert re.search(r"^\s+continue-on-error:\s*true\s*$", auth, re.M), name
-        assert "yt-ops-monitor@nowbrd-release.iam.gserviceaccount.com" in auth
+        assert "GCP_MONITOR_ADC: ${{ secrets.GCP_MONITOR_ADC }}" in auth, name  # secret only via env:
+        assert "umask 077" in auth, name
         quota_step = _step_block(text, "python -m ytops quota")
         assert re.search(r"^\s+continue-on-error:\s*true\s*$", quota_step, re.M), name
+        assert 'rm -f "$GOOGLE_APPLICATION_CREDENTIALS"' in quota_step, name  # credential file does not outlive the read
         render_step = _step_block(text, "python -m ytops render")
         assert '--quota "$RUNNER_TEMP/quota.json"' in render_step, name
-        assert text.index("google-github-actions/auth@v2") < text.index("python -m ytops quota") < text.index("python -m ytops render"), name
+        assert text.index("GCP_MONITOR_ADC") < text.index("python -m ytops quota") < text.index("python -m ytops render"), name
         assert re.search(r"^\s+id-token:\s*write\s*$", text, re.M), name
