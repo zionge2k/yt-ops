@@ -124,24 +124,6 @@ const QUOTA_TONE = { ok: "blue", warn: "purple", bad: "red", out: "red", unknown
 const quotaTone = (p) => QUOTA_TONE[p.status] || "grey";
 const usageKnown = (p) => !isNull(p.used) && !p.error;
 
-// Worst tone wins the chip accent: red > purple > blue > grey.
-const TONE_RANK = { red: 3, purple: 2, blue: 1, grey: 0 };
-const worstTone = (projects) => projects.map(quotaTone).reduce((w, t) => (TONE_RANK[t] > TONE_RANK[w] ? t : w), "grey");
-
-/** One header chip showing every project's usage, one row per project. */
-function quotaChips() {
-  const q = DATA.quota;
-  if (!q || !q.projects || !q.projects.length) return `<a class="qchip s-grey" href="#api"><span class="qt">API 사용량 · 확인 불가</span></a>`;
-  const rows = q.projects.map((p) => {
-    const known = usageKnown(p);
-    const w = known ? Math.min(100, p.pct || 0) : 0;
-    const mark = p.status === "out" ? " ⛔" : p.status === "bad" ? " ⚠" : "";
-    const val = known ? `<b class="n">${fmt(p.pct)}%</b>${mark}` : `<span class="qx">확인 불가</span>`;
-    return `<div class="qr"><span class="ql">${esc(p.label)}</span><span class="qbar"><i class="s-${quotaTone(p)}" style="width:${w}%"></i></span><span class="qv">${val}</span></div>`;
-  }).join("");
-  return `<a class="qchip s-${worstTone(q.projects)}" href="#api"><span class="qt">API 사용량</span>${rows}</a>`;
-}
-
 function hoursBars(hours) {
   if (!hours.length) return `<div class="nochart">—</div>`;
   const max = Math.max(...hours.map((x) => x.n), 1);
@@ -199,7 +181,7 @@ function renderTop(view) {
   return `<header class="top">
     <h1>유튜브 상황판</h1>
     <nav class="tabs" aria-label="화면">${tabs}</nav>
-    <div class="meta n"><span>생성 ${mdhm(DATA.generated_at)} · 기준일 ${ymd(DATA.latest_day)} · 지연 ${fmt(DATA.lag_days)}일</span>${quotaChips()}</div>
+    <div class="meta n"><span>생성 ${mdhm(DATA.generated_at)} · 기준일 ${ymd(DATA.latest_day)} · 지연 ${fmt(DATA.lag_days)}일</span></div>
   </header>`;
 }
 
