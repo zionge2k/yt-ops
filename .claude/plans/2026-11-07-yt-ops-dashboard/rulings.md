@@ -120,3 +120,5 @@
 - 시험: 11/08 15:00 live 실행이 shorts-factory 403 → 소진 알림 첫 실전.
 - Ruling 변경(형아 11/08 13:50): **게이지를 지금 넣는다.** 이유: 숨비가 상황을 알고, 어느 앱이 API 를 비효율적으로 쓰는지 봐야 함. 모양은 머리줄 칩(프로젝트별 %) + `#api` 상세(시간대별 · 열쇠별 · 메서드별). 갱신은 워크플로 실행마다(하루 ~13회).
 - 권한: 키 없는 WIF. 서비스 계정 `yt-ops-monitor@nowbrd-release`(monitoring.viewer 두 프로젝트), 풀/제공자 `projects/240395376214/locations/global/workloadIdentityPools/github/providers/github`, 조건 `assertion.repository=='zionge2k/yt-ops'`. 열쇠 이름표(`[credentials]`): 숨비네 `v63007rf`=yt-ops 열쇠(찰나 공용) · `6sl59ntt`=숨비 PC 앱, 형아네 `11hllqpn`=yt-ops 열쇠 · `rsgoo1ju`=다른 앱.
+- Ruling(형아 11/08 14:10): **결제 연결은 안 한다.** Monitoring 은 결제 없는 프로젝트의 서비스 계정 호출을 거절(403 "requires billing")하므로 WIF·서비스 계정은 지우고, Mac 의 gcloud 와 같은 **사용자 자격증명**을 쓴다: 읽기 전용 계정 zion.geek.py(두 프로젝트 monitoring.viewer 만)의 gcloud 로그인 파일을 Actions 비밀값 `GCP_MONITOR_ADC` 로. 러너 임시 폴더에 풀고 읽은 뒤 삭제. 새면 `gcloud auth revoke zion.geek.py@gmail.com` 으로 끊고 비밀값 교체.
+- 칩은 하나(API 사용량 · 두 프로젝트 두 줄). 새로고침 때 즉시 재조회는 정적 페이지라 불가 — 필요해지면 Cloudflare Worker 로 "지금 새로고침" 버튼(형아 판단 보류).
