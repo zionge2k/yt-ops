@@ -135,3 +135,4 @@
 - 설계: 페이지 → POST {password} → Vercel `refresh/api/refresh.js`(비밀번호 timingSafeEqual · 틀리면 1.5초 지연 · GitHub 최근 workflow_dispatch 실행 시각으로 10분 쿨다운 · PAT 로 `refresh.yml` dispatch) → 워크플로 ~2분 → 페이지가 30초마다 data.enc 를 다시 받아 generated_at 바뀌면 그 자리에서 교체.
 - 실측: GitHub Pages CDN 은 쿼리 문자열을 캐시 키에서 무시(`?r=` 로 못 뚫음)하지만 **배포 완료 시 캐시를 비움**(11/08 11:46 UTC, etag 교체 10초 이내). 그래서 폴링은 평문 URL 로 충분하고 "2~3분" 문구 유지.
 - 보안 리뷰 지적(비밀번호 대입 창구): data.enc 가 공개라 오프라인 대입이 이미 가능하므로 새 위험은 아님. 그래도 틀린 답을 1.5초 늦춰 온라인이 더 빠르지 않게 함. 별도 비밀번호는 숨비 부담이라 안 둠.
+- 배포 뒤 겪은 것(11/08 밤): ① `!` 로 `vercel env add` 를 치면 입력창이 안 떠서 `pbpaste | tr -d '\n' |` 로 클립보드에서 넣음. ② DASH_PASSWORD 가 한 번, GITHUB_TOKEN 이 한 번 잘못 들어감(복사 시점 클립보드 문제 또는 PAT 저장소 미선택) → 버튼 문구에 서버 오류 키를 붙이고(`(github_unavailable)`) 함수 로그에 상태 한 줄을 남기도록 고침. ③ 401 때 저장된 비밀번호를 지우던 처리는 잘못이라 뺌(페이지 쪽 값은 data.enc 를 푼 값이라 항상 맞음). 끝: 23:55 버튼 → refresh 실행 성공, 오류 0.

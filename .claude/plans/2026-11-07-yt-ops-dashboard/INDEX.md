@@ -27,7 +27,7 @@ Status: active
 - [x] 건강 검진(opus, 11/08 오후) 4/5 → 손볼 3곳 반영: 배포 전 pytest 관문(daily·live) + push 마다 test.yml · 렌더 선택 표 읽기 실패를 오류 목록에 표시 · README/주석의 WIF 문구 정정 — 테스트 261
 - [x] 11/08 17:00 한도 리셋 뒤 daily 수동 실행 → 8채널 오류 0(숨비네 4채널 복구) · 일회성 cron 줄 삭제 · live 2시간 실행 성공 확인(15:08)
 - [x] 호출 상한 조임: 채널 300 · 프로젝트 1,000 (11/08)
-- [ ] **지금 새로고침 버튼** (11/08 저녁, 코드 완료 · 배포 대기): refresh.yml + Vercel 함수(`refresh/`) + 페이지 버튼. 남은 건 형아 손 — `npx vercel login` · PAT(yt-ops Actions 읽기+쓰기) · env 두 개 · `--prod` 배포 → 꼬비가 `REFRESH_URL` 채워 push. 숨비 폰 포함 실사용 확인.
+- [x] **지금 새로고침 버튼** (11/08 밤 실사용 확인): refresh.yml + Vercel 함수 `yt-ops-refresh`(`refresh/`) + 페이지 버튼. 형아 브라우저에서 눌러 23:55 실행 → 8채널 오류 0. 비밀값은 Vercel 에 GITHUB_TOKEN(PAT · yt-ops Actions 읽기+쓰기) · DASH_PASSWORD. 남은 것: 숨비 폰에서 한 번 눌러 보기.
 - [ ] 남은 것: `config/channels.toml` 채널별 업로드 계획 숫자 채우기(지금은 전부 '계획 없음') · 숨비 폰으로 열어 보기 · 채널 전체 상태 규칙 확정 · 아주 작은 기준값의 퍼센트(+70,900% 류) 표시 규칙 · 11/08 09:30 첫 자동 실행 확인
 
 ## Resume Point
