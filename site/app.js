@@ -8,6 +8,12 @@ const app = document.getElementById("app");
 let DATA = null;
 let sampleMode = false;
 let watchWin = "28";
+const REFRESH_URL = "";  // Vercel function URL (refresh/README.md); empty hides the button
+const REFRESH_LABEL = "지금 새로고침";
+const POLL_MS = 30000, POLL_MAX_MS = 8 * 60 * 1000;
+// Button state lives here (not in the DOM) because render() rebuilds the header on every hash change.
+let rf = { text: REFRESH_LABEL, disabled: false };
+let rfTimer = null, rfPoll = null;
 
 // ---------- helpers ----------
 const isNull = (v) => v === null || v === undefined;
@@ -176,13 +182,19 @@ function route() {
   return { view: ["board", "subs", "watch", "api"].includes(h) ? h : "board" };
 }
 
+function refreshButton() {
+  if (sampleMode) return `<button type="button" class="refresh" id="refresh" disabled title="시안 모드">${REFRESH_LABEL}</button>`;
+  if (!REFRESH_URL) return "";
+  return `<button type="button" class="refresh" id="refresh"${rf.disabled ? " disabled" : ""}>${esc(rf.text)}</button>`;
+}
+
 function renderTop(view) {
   const tabs = [["board", "현황판"], ["subs", "구독자"], ["watch", "시청시간"], ["api", "API"]]
     .map(([k, t]) => `<a href="#${k}" ${view === k ? 'aria-current="page"' : ""}>${t}</a>`).join("");
   return `<header class="top">
     <h1>유튜브 상황판</h1>
     <nav class="tabs" aria-label="화면">${tabs}</nav>
-    <div class="meta n"><span>생성 ${mdhm(DATA.generated_at)} · 기준일 ${ymd(DATA.latest_day)} · 지연 ${fmt(DATA.lag_days)}일</span></div>
+    <div class="meta n"><span>생성 ${mdhm(DATA.generated_at)} · 기준일 ${ymd(DATA.latest_day)} · 지연 ${fmt(DATA.lag_days)}일</span>${refreshButton()}</div>
   </header>`;
 }
 
@@ -333,7 +345,76 @@ function render() {
     render();
     window.scrollTo(0, y);
   }));
+  const rfBtn = document.getElementById("refresh");
+  if (rfBtn && !sampleMode) rfBtn.addEventListener("click", startRefresh);
   if (r.view === "ch") window.scrollTo(0, 0);
+}
+
+// ---------- refresh now ----------
+function setRefresh(text, disabled) {
+  rf = { text, disabled };
+  const b = document.getElementById("refresh");
+  if (b) { b.textContent = text; b.disabled = disabled; }
+}
+
+function releaseRefreshAfter(ms, text) {
+  clearTimeout(rfTimer);
+  rfTimer = setTimeout(() => setRefresh(text || REFRESH_LABEL, false), ms);
+}
+
+async function startRefresh() {
+  if (rf.disabled) return;
+  setRefresh("요청 중…", true);
+  let res = null, info = {};
+  try {
+    res = await fetch(REFRESH_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: store("get", STORE_KEY) }),
+    });
+    info = await res.json().catch(() => ({}));
+  } catch (e) { res = null; }
+  if (res && res.status === 202) {
+    setRefresh("새로 읽는 중 · 2~3분 걸려요", true);
+    pollForNewData();
+  } else if (res && res.status === 429) {
+    const secs = Math.min(Math.max(Number(info.retry_after_s) || 60, 1), 600);
+    setRefresh(`방금 새로고침했어요 · ${Math.ceil(secs / 60)}분 뒤 다시`, true);
+    releaseRefreshAfter(secs * 1000);
+  } else if (res && res.status === 401) {
+    setRefresh("비밀번호가 달라요 · 다시 로그인", true);
+    store("del", STORE_KEY);
+    setTimeout(() => location.reload(), 1500);
+  } else {
+    setRefresh("지금은 안 돼요 · 잠시 뒤 다시", true);
+    releaseRefreshAfter(30000);
+  }
+}
+
+// Poll data.enc until generated_at changes (workflow takes ~2-3 min), at most POLL_MAX_MS.
+function pollForNewData() {
+  clearInterval(rfPoll);
+  const t0 = Date.now();
+  rfPoll = setInterval(async () => {
+    try {
+      const res = await fetch("data.enc?r=" + Date.now(), { cache: "no-store" });
+      if (res.ok) {
+        const data = await tryDecrypt(await res.json(), store("get", STORE_KEY));
+        if (data && data.generated_at !== DATA.generated_at) {
+          clearInterval(rfPoll);
+          DATA = data;
+          render();
+          setRefresh(`방금 갱신됨 ${hm(data.generated_at)}`, true);
+          releaseRefreshAfter(60000);
+          return;
+        }
+      }
+    } catch (e) { /* keep polling until the deadline */ }
+    if (Date.now() - t0 >= POLL_MAX_MS) {
+      clearInterval(rfPoll);
+      setRefresh("아직이에요 · 잠시 뒤 새로고침(F5)", false);
+    }
+  }, POLL_MS);
 }
 
 window.addEventListener("hashchange", render);

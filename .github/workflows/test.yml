@@ -34,3 +34,8 @@ jobs:
       - run: node --check site/app.js
 
       - run: node --test tests/test_site_stale.mjs
+
+      - run: node --test tests/test_site_refresh.mjs
+
+      - run: node --test
+        working-directory: refresh

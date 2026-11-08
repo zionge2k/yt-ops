@@ -35,6 +35,8 @@ img { max-width: 100%; }
 .tabs { display: inline-flex; background: var(--sheet); border: 1.5px solid var(--rule); border-radius: 12px; padding: 4px; gap: 2px; }
 .tabs a { text-decoration: none; padding: 0 22px; min-height: 44px; display: inline-flex; align-items: center; border-radius: 8px; font-weight: 700; color: var(--ink-2); }
 .tabs a[aria-current="page"] { background: var(--ink); color: #fff; }
+.refresh { font: inherit; font-size: 16px; font-weight: 700; min-height: 42px; padding: 0 16px; border: 1.5px solid var(--rule); border-radius: 10px; background: var(--sheet); color: var(--ink); cursor: pointer; white-space: nowrap; }
+.refresh:disabled { color: var(--ink-2); cursor: default; }
 .meta { margin: 0; color: var(--ink-2); font-size: 17px; white-space: nowrap; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px 12px; }
 .qtrack i { display: block; height: 4px; border-radius: 2px; background: var(--c); }
 .s-ok { --c: var(--blue); } .s-warn { --c: var(--purple); } .s-bad, .s-out, .s-red { --c: var(--red); } .s-blue { --c: var(--blue); } .s-purple { --c: var(--purple); } .s-grey { --c: var(--off); }
@@ -144,6 +146,7 @@ img { max-width: 100%; }
   :root { --gutter: 16px; --gap: 12px; --num: 28px; }
   .grid { grid-template-columns: 1fr; }
   .top { grid-template-columns: 1fr; }
+  .refresh { flex: 1 1 100%; }
   .tabs a { padding: 0 14px; flex: 1; justify-content: center; }
   .tabs { display: flex; }
   .cols { grid-template-columns: 1fr; }
