@@ -69,5 +69,7 @@ export default async function handler(req, res) {
     try { body = JSON.parse(body); } catch { body = null; }
   }
   const { status, json } = await refresh({ body, env: process.env });
+  // One line per request in the Vercel log: status and error key only, never the password or token.
+  console.log(`refresh ${status} ${json.error || "ok"}${json.status ? " github=" + json.status : ""}`);
   return res.status(status).json(json);
 }
