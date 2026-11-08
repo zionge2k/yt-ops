@@ -1,0 +1,127 @@
+name: refresh
+
+# 숨비가 상황판의 "지금 새로고침" 을 누르면 Vercel 함수가 이 워크플로를 실행한다.
+# 구독자 · 시청시간 · 라이브만 다시 읽는다(Analytics 는 3일 지연이라 낮에 다시 읽어도 보통 그대로).
+on:
+  workflow_dispatch:
+
+# daily · live 와 다른 group — 같은 group 이면 대기 중인 실행이 서로 밀려 취소될 수 있다.
+concurrency:
+  group: refresh
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 금고 받기
+        uses: actions/checkout@v4
+        with:
+          repository: zionge2k/yt-channels-vault
+          ssh-key: ${{ secrets.VAULT_SSH_KEY }}
+          path: vault
+
+      - name: 금고 풀기 (토큰은 러너 임시 폴더에만)
+        env:
+          AGE_KEY: ${{ secrets.AGE_KEY }}
+        run: |
+          umask 077
+          # age 배포본은 지문(SHA256)이 맞을 때만 푼다 — daily.yml 과 같은 값. 버전을 올리면 두 파일을 같이 바꾼다.
+          AGE_URL="https://github.com/FiloSottile/age/releases/download/v1.2.1/age-v1.2.1-linux-amd64.tar.gz"
+          AGE_SHA256="7df45a6cc87d4da11cc03a539a7470c15b1041ab2b396af088fe9990f7c79d50"
+          curl -sSL -o "$RUNNER_TEMP/age.tgz" "$AGE_URL"
+          echo "$AGE_SHA256  $RUNNER_TEMP/age.tgz" | sha256sum -c - || { echo "⛔ age 지문 불일치 — 다운로드를 믿을 수 없어 중단"; exit 1; }
+          tar -xz -C "$RUNNER_TEMP" -f "$RUNNER_TEMP/age.tgz" && rm -f "$RUNNER_TEMP/age.tgz"
+          printf '%s\n' "$AGE_KEY" > "$RUNNER_TEMP/age.key"
+          "$RUNNER_TEMP/age/age" -d -i "$RUNNER_TEMP/age.key" vault/yt-channels.tar.age | tar -xz -C "$RUNNER_TEMP"
+          rm -f "$RUNNER_TEMP/age.key"
+          echo "YT_CHANNELS_HOME=$RUNNER_TEMP/yt-channels" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      # Broken code must not reach the DB or the page: the suite runs before anything touches them.
+      - name: 테스트
+        run: pip install pytest && python -m pytest -q
+
+      # Deploy must happen even if collection reports errors; failure is surfaced in the last step.
+      - name: 새로고침 수집
+        id: collect
+        continue-on-error: true
+        # explicit shell: the default `bash -e` has no pipefail, so tee would hide python's exit code
+        shell: bash
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python -m ytops collect --all --only channel_daily,subs,live | tee "$RUNNER_TEMP/collect.log"
+
+      # Monitoring 읽기는 결제 없는 프로젝트의 서비스 계정으론 거절되므로(403 "requires billing"),
+      # Mac 의 gcloud 와 같은 사용자 자격증명(읽기 전용 계정 zion.geek.py, monitoring.viewer 만)을 쓴다.
+      # 비밀값은 러너 임시 폴더에만 풀고 읽은 뒤 지운다. 실패해도 수집·배포는 계속.
+      - name: Google 인증 (사용량 읽기 · 읽기 전용 계정)
+        id: gauth
+        continue-on-error: true
+        env:
+          GCP_MONITOR_ADC: ${{ secrets.GCP_MONITOR_ADC }}
+        run: |
+          umask 077
+          [ -n "$GCP_MONITOR_ADC" ] || { echo "GCP_MONITOR_ADC 비밀값 없음 — 사용량은 건너뜀"; exit 1; }
+          printf '%s' "$GCP_MONITOR_ADC" > "$RUNNER_TEMP/gcp-adc.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/gcp-adc.json" >> "$GITHUB_ENV"
+
+      - name: API 사용량 읽기
+        if: steps.gauth.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          rc=0
+          python -m ytops quota --json --out "$RUNNER_TEMP/quota.json" || rc=$?
+          rm -f "$GOOGLE_APPLICATION_CREDENTIALS"
+          exit $rc
+
+      - name: 화면 데이터 만들기
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python -m ytops render --out "$RUNNER_TEMP/data.json" --quota "$RUNNER_TEMP/quota.json"
+
+      - name: 암호화
+        env:
+          DASH_PASSWORD: ${{ secrets.DASH_PASSWORD }}
+        run: |
+          rm -f site/sample.json
+          python -m ytops encrypt "$RUNNER_TEMP/data.json" site/data.enc
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: 배포
+        id: deploy
+        uses: actions/deploy-pages@v4
+
+      - name: 수집 오류 알림
+        if: steps.collect.outcome == 'failure'
+        run: |
+          # 한도가 바닥난 날은 오류가 전부 403 quota 라 경고만 남기고 끝낸다 (실패 메일이 쌓이지 않게)
+          if grep -q '^quota_exhausted=1$' "$RUNNER_TEMP/collect.log" 2>/dev/null; then
+            echo "::warning::YouTube API 일일 한도 소진 — 새로고침 수집 건너뜀"
+            exit 0
+          fi
+          echo "새로고침 수집 오류 있음 — 로그 확인"
+          exit 1

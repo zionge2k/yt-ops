@@ -17,6 +17,15 @@ def test_daily_and_live_do_not_share_concurrency_group():
     assert _group(_text("daily.yml")) != _group(_text("live.yml"))
 
 
+def test_refresh_workflow_is_dispatch_only_and_light():
+    text = _text("refresh.yml")
+    assert not re.search(r"^\s*schedule:", text, re.M)
+    assert "workflow_dispatch" in text
+    assert "--only channel_daily,subs,live" in text
+    assert "schema --apply" not in text
+    assert _group(text) not in (_group(_text("daily.yml")), _group(_text("live.yml")))
+
+
 def test_live_runs_every_two_hours():
     crons = re.findall(r"^\s*-\s*cron:\s*'([^']+)'", _text("live.yml"), re.M)
     assert crons == ["0 */2 * * *"]
@@ -54,14 +63,14 @@ def test_live_collect_step_keeps_python_exit_code():
 
 
 def test_every_piped_python_step_has_pipefail():
-    for name in ("live.yml", "daily.yml"):
+    for name in ("live.yml", "daily.yml", "refresh.yml"):
         for block in re.split(r"(?m)^      - (?=\S)", _text(name)):
             if re.search(r"python -m ytops [^\n]*\|", block):
                 assert re.search(r"^\s+shell:\s*bash\s*$", block, re.M) or "set -o pipefail" in block, name
 
 
 def test_both_workflows_read_quota_before_render_and_pass_it():
-    for name in ("daily.yml", "live.yml"):
+    for name in ("daily.yml", "live.yml", "refresh.yml"):
         text = _text(name)
         auth = _step_block(text, "GCP_MONITOR_ADC")
         assert re.search(r"^\s+continue-on-error:\s*true\s*$", auth, re.M), name
