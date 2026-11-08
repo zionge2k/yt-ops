@@ -1,5 +1,5 @@
 // yt-ops dashboard v3: static page, renders data.json (from data.enc, or sample.json in dev).
-// Routes (hash): #board (default) · #subs · #watch · #ch/<key>
+// Routes (hash): #board (default) · #subs · #watch · #api · #ch/<key>
 "use strict";
 
 const STORE_KEY = "ytops_pw";
@@ -117,20 +117,80 @@ function progress(label, have, p, target, unit, color) {
     <div class="pp n t-${color}">${isNull(p) ? "—" : fmt(p, 1) + "%"}</div></div>`;
 }
 
+// ---------- API usage (quota) ----------
+const hm = (iso) => { const p = kst(iso); return `${p.hour}:${p.minute}`; };
+// Usage status -> existing colour tone (no green/amber in the palette: ok = calm blue, warn = purple).
+const QUOTA_TONE = { ok: "blue", warn: "purple", bad: "red", out: "red", unknown: "grey" };
+const quotaTone = (p) => QUOTA_TONE[p.status] || "grey";
+const usageKnown = (p) => !isNull(p.used) && !p.error;
+
+function quotaChips() {
+  const q = DATA.quota;
+  if (!q || !q.projects || !q.projects.length) return `<a class="chip s-grey" href="#api"><span>API 사용량 확인 불가</span><i style="width:0"></i></a>`;
+  return q.projects.map((p) => {
+    const known = usageKnown(p);
+    const w = known ? Math.min(100, p.pct || 0) : 0;
+    return `<a class="chip s-${quotaTone(p)}" href="#api"><span>${esc(p.label)} ${known ? `${fmt(p.pct)}%` : "확인 불가"}</span><i style="width:${w}%"></i></a>`;
+  }).join("");
+}
+
+function hoursBars(hours) {
+  if (!hours.length) return `<div class="nochart">—</div>`;
+  const max = Math.max(...hours.map((x) => x.n), 1);
+  let prevDay = null;
+  return `<div class="qhours" role="img" aria-label="시간대별 사용량">${hours.map((x) => {
+    const [day, hour] = x.h.split(" ");
+    const showDay = day !== prevDay;
+    prevDay = day;
+    return `<div class="qh" title="${esc(x.h)} ${fmt(x.n)}단위"><span class="qn n">${fmt(x.n)}</span><span class="qbar"><i style="height:${Math.max(3, x.n / max * 100).toFixed(0)}%"></i></span><span class="ql n">${esc(hour)}</span><span class="qd n">${showDay ? esc(day) : ""}</span></div>`;
+  }).join("")}</div>`;
+}
+
+function quotaCard(p) {
+  const names = (p.channels || []).map(nameOf).join(" · ");
+  const head = `<div class="namerow"><h2>${esc(p.label)}${names ? ` (${esc(names)})` : ""}</h2></div>`;
+  if (!usageKnown(p)) return `<article class="card h-grey">${head}<div class="fail">사용량을 읽지 못했어요 (권한 또는 네트워크)</div></article>`;
+  const mark = p.status === "out" ? "⛔ 소진 " : p.status === "bad" ? "⚠ " : "";
+  const w = Math.min(100, p.pct || 0);
+  const when = `${p.reset_at ? `${hm(p.reset_at)} 에 0 으로 돌아감` : ""}${p.reset_at && DATA.quota.as_of ? " · " : ""}${DATA.quota.as_of ? `${hm(DATA.quota.as_of)} 기준` : ""}`;
+  const apps = (p.apps || []).map((a) => ({ label: a.name, value: a.n, text: `${fmt(a.n)}${p.used ? ` (${fmt(Math.round(a.n / p.used * 100))}%)` : ""}` }));
+  const methods = (p.methods || []).map((m) => ({ label: m.name, value: m.n, text: fmt(m.n) }));
+  const tone = quotaTone(p);
+  return `<article class="card h-${tone}">${head}
+    <div class="stat"><span class="num n t-${tone}">${mark}${fmt(p.used)} / ${fmt(p.limit)}<small>단위 (${fmt(p.pct)}%)</small></span></div>
+    <div class="qtrack"><i class="s-${tone}" style="width:${w}%"></i></div>
+    <div class="n qwhen">${esc(when)}</div>
+    <div><h4>시간대별</h4>${hoursBars(p.hours || [])}</div>
+    <div><h4>어디서 썼나</h4>${hbars(apps, tone)}</div>
+    <div><h4>메서드</h4>${hbars(methods, tone)}</div>
+    <div class="n qwhen">Analytics API <b>${fmt(p.analytics_used)}</b> / ${fmt(p.analytics_limit)}</div>
+  </article>`;
+}
+
+function renderApi() {
+  const q = DATA.quota;
+  const projects = (q && q.projects) || [];
+  const limit = (projects.find((p) => !isNull(p.limit)) || {}).limit || 10000;
+  const size = Math.max(0, ...projects.map((p) => (p.channels || []).length));
+  const intro = `<p class="apinote">한도는 Google 프로젝트(채널 ${fmt(size || 4)}개 묶음)마다 하루 ${fmt(limit)} 단위예요. 다 쓰면 그날 수집이 멈추고, 태평양 자정(한국 16~17시)에 0 으로 돌아가요.</p>`;
+  if (!projects.length) return `${intro}<article class="card h-grey"><div class="fail">API 사용량을 확인하지 못했어요</div></article>`;
+  return `${intro}<div class="apigrid">${projects.map(quotaCard).join("")}</div>`;
+}
+
 // ---------- top ----------
 function route() {
   const h = (location.hash || "#board").slice(1);
   if (h.startsWith("ch/")) return { view: "ch", key: h.slice(3) };
-  return { view: ["board", "subs", "watch"].includes(h) ? h : "board" };
+  return { view: ["board", "subs", "watch", "api"].includes(h) ? h : "board" };
 }
 
 function renderTop(view) {
-  const tabs = [["board", "현황판"], ["subs", "구독자"], ["watch", "시청시간"]]
+  const tabs = [["board", "현황판"], ["subs", "구독자"], ["watch", "시청시간"], ["api", "API"]]
     .map(([k, t]) => `<a href="#${k}" ${view === k ? 'aria-current="page"' : ""}>${t}</a>`).join("");
   return `<header class="top">
     <h1>유튜브 상황판</h1>
     <nav class="tabs" aria-label="화면">${tabs}</nav>
-    <p class="meta n">생성 ${mdhm(DATA.generated_at)} · 기준일 ${ymd(DATA.latest_day)} · 지연 ${fmt(DATA.lag_days)}일</p>
+    <div class="meta n"><span>생성 ${mdhm(DATA.generated_at)} · 기준일 ${ymd(DATA.latest_day)} · 지연 ${fmt(DATA.lag_days)}일</span>${quotaChips()}</div>
   </header>`;
 }
 
@@ -271,6 +331,7 @@ function render() {
   if (r.view === "ch") body = renderChannel(r.key);
   else if (r.view === "subs") body = renderSubs();
   else if (r.view === "watch") body = renderWatch();
+  else if (r.view === "api") body = renderApi();
   else body = renderBoard();
   app.innerHTML = renderBands() + `<main>${renderTop(r.view)}${body}${renderErrors()}</main>`;
   app.querySelectorAll(".seg button").forEach((btn) => btn.addEventListener("click", () => {
