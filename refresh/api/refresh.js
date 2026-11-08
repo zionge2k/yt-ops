@@ -2,6 +2,10 @@
 import { timingSafeEqual } from "node:crypto";
 
 export const OWNER = "zionge2k", REPO = "yt-ops", WORKFLOW = "refresh.yml", COOLDOWN_MS = 10 * 60 * 1000;
+// A wrong password answers slowly: the encrypted data file is public anyway, so this oracle must not be
+// a faster way to guess the password than attacking that file offline.
+export const FAIL_DELAY_MS = 1500;
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const DEFAULT_ORIGIN = "https://zionge2k.github.io";
 const BASE = `https://api.github.com/repos/${OWNER}/${REPO}/actions/workflows/${WORKFLOW}`;
 
@@ -17,9 +21,10 @@ const ghHeaders = (token) => ({
   "User-Agent": "yt-ops-refresh",
 });
 
-export async function refresh({ body, env, fetchImpl = fetch, now = Date.now }) {
+export async function refresh({ body, env, fetchImpl = fetch, now = Date.now, sleep = wait }) {
   if (!env.DASH_PASSWORD || !env.GITHUB_TOKEN) return { status: 500, json: { error: "server_not_configured" } };
   if (!body || typeof body !== "object" || typeof body.password !== "string" || !samePassword(body.password, env.DASH_PASSWORD)) {
+    await sleep(FAIL_DELAY_MS);
     return { status: 401, json: { error: "wrong_password" } };
   }
   const headers = ghHeaders(env.GITHUB_TOKEN);

@@ -18,13 +18,15 @@ function fake({ runs, dispatch = { status: 204 } }) {
   return { calls, fetchImpl };
 }
 const runsOf = (minAgo) => ({ status: 200, body: { workflow_runs: minAgo == null ? [] : [{ created_at: iso(minAgo) }] } });
-const go = (body, f, env = ENV) => refresh({ body, env, fetchImpl: f.fetchImpl, now: () => NOW });
+const slept = [];
+const go = (body, f, env = ENV) => refresh({ body, env, fetchImpl: f.fetchImpl, now: () => NOW, sleep: async (ms) => { slept.push(ms); } });
 
 test("wrong password is 401 and never reaches GitHub", async () => {
   const f = fake({ runs: runsOf(null) });
   const r = await go({ password: "nope" }, f);
   assert.equal(r.status, 401);
   assert.deepEqual(r.json, { error: "wrong_password" });
+  assert.ok(slept.includes(1500), "a wrong password must be answered slowly");
   assert.equal(f.calls.length, 0);
 });
 
