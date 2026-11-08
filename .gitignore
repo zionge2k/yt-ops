@@ -8,3 +8,7 @@ site/data.enc
 !.claude/plans/
 *.egg-info/
 uv.lock
+
+# Local design mockups and screen captures (may hold real numbers; public repo)
+docs/mockups/
+docs/screens/
