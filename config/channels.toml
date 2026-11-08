@@ -60,3 +60,10 @@ channels = ["soombi", "backthen", "a2p", "urachacha"]
 [projects.nowbrd-release]
 label = "형아네"
 channels = ["justsoombi", "soombicafe", "pliwav", "groovewav"]
+
+# OAuth client prefixes (first 8 chars of the client id, not secret) → name on the API page.
+[credentials]
+v63007rf = "yt-ops 열쇠 (찰나 공용)"
+6sl59ntt = "숨비 PC 앱"
+11hllqpn = "yt-ops 열쇠"
+rsgoo1ju = "다른 앱"

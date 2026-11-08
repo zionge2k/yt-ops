@@ -1,6 +1,6 @@
 import pytest
 
-from ytops.registry import KEYS, load_channels, load_projects, resolve_key
+from ytops.registry import KEYS, load_channels, load_credential_names, load_projects, resolve_key
 
 
 def test_resolve_alias():
@@ -76,3 +76,21 @@ def test_repo_projects_cover_all_channels_once():
     assert len(projects) == 2
     chans = [c for p in projects for c in p.channels]
     assert len(chans) == 8 and sorted(chans) == sorted(KEYS)
+
+
+def test_load_credential_names_from_default_config():
+    names = load_credential_names()
+    assert names["v63007rf"] == "yt-ops 열쇠 (찰나 공용)"
+    assert names["6sl59ntt"] == "숨비 PC 앱" and len(names) == 4
+
+
+def test_load_credential_names_missing_table_is_empty(tmp_path):
+    cfg = tmp_path / "c.toml"
+    cfg.write_text('[channels.soombi]\ndisplay = "A"\n', encoding="utf-8")
+    assert load_credential_names(cfg) == {}
+
+
+def test_credentials_table_does_not_leak_into_channels_or_projects(monkeypatch, tmp_path):
+    monkeypatch.setenv("YT_CHANNELS_HOME", str(tmp_path / "empty"))
+    assert "v63007rf" not in load_channels()
+    assert all(p.id != "v63007rf" for p in load_projects())

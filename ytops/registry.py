@@ -88,3 +88,10 @@ def load_projects(config_path: Path | None = None) -> list[Project]:
         rows = tomllib.load(f).get("projects", {})
     return [Project(id=pid, label=row.get("label", pid), channels=list(row.get("channels", [])))
             for pid, row in rows.items()]
+
+
+def load_credential_names(config_path: Path | None = None) -> dict[str, str]:
+    """OAuth client id prefix (first 8 chars) -> readable app name for the API usage page."""
+    with (config_path or DEFAULT_CONFIG).open("rb") as f:
+        rows = tomllib.load(f).get("credentials", {})
+    return {str(code): str(name) for code, name in rows.items()}
