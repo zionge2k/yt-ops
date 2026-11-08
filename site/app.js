@@ -109,7 +109,7 @@ function hbars(rows, color) {
   if (!rows.length) return `<div class="nochart">—</div>`;
   return `<div class="hbars">${rows.map((r) => {
     const w = isNull(r.value) ? 0 : Math.abs(r.value) / max * 100;
-    return `<div class="hrow"><span class="hl">${esc(r.label)}</span>
+    return `<div class="hrow"${r.title ? ` title="${esc(r.title)}"` : ""}><span class="hl">${esc(r.label)}</span>
       <svg viewBox="0 0 100 10" preserveAspectRatio="none" role="img" aria-label="${esc(r.label)} ${esc(r.text)}"><rect x="0" y="0" width="100" height="10" fill="var(--track)"/><rect x="0" y="0" width="${w.toFixed(1)}" height="10" fill="${col(r.color || color)}"><title>${esc(r.label)} ${esc(r.text)}</title></rect></svg>
       <span class="hv n">${esc(r.text)}</span></div>`;
   }).join("")}</div>`;
@@ -150,15 +150,15 @@ function quotaCard(p) {
   const w = Math.min(100, p.pct || 0);
   const when = `${p.reset_at ? `${hm(p.reset_at)} 에 0 으로 돌아감` : ""}${p.reset_at && DATA.quota.as_of ? " · " : ""}${DATA.quota.as_of ? `${hm(DATA.quota.as_of)} 기준` : ""}`;
   const apps = (p.apps || []).map((a) => ({ label: a.name, value: a.n, text: `${fmt(a.n)}${p.used ? ` (${fmt(Math.round(a.n / p.used * 100))}%)` : ""}` }));
-  const methods = (p.methods || []).map((m) => ({ label: m.name, value: m.n, text: fmt(m.n) }));
+  const methods = (p.methods || []).map((m) => ({ label: m.name, title: m.method, value: m.n, text: fmt(m.n) }));
   const tone = quotaTone(p);
   return `<article class="card h-${tone}">${head}
     <div class="stat"><span class="num n t-${tone}">${mark}${fmt(p.used)} / ${fmt(p.limit)}<small>단위 (${fmt(p.pct)}%)</small></span></div>
     <div class="qtrack"><i class="s-${tone}" style="width:${w}%"></i></div>
     <div class="n qwhen">${esc(when)}</div>
     <div><h4>시간대별</h4>${hoursBars(p.hours || [])}</div>
-    <div><h4>어디서 썼나</h4>${hbars(apps, tone)}</div>
-    <div><h4>메서드</h4>${hbars(methods, tone)}</div>
+    <div><h4>어느 앱이 썼나</h4>${hbars(apps, tone)}</div>
+    <div><h4>무슨 일에 썼나</h4>${hbars(methods, tone)}</div>
     <div class="n qwhen">Analytics API <b>${fmt(p.analytics_used)}</b> / ${fmt(p.analytics_limit)}</div>
   </article>`;
 }

@@ -11,7 +11,7 @@ GitHub Actions(매일 KST 09:30) → 수집 → Supabase(Postgres) → 암호화
 - 토큰·DB 주소는 저장소에 두지 않는다. `.env` 는 git 에서 제외된다.
 - 배포되는 데이터는 `site/data.enc`(암호화)뿐이다.
 - Data API 호출은 한 run 에서 채널당 300회, GCP 프로젝트당 1,000회(하루 한도 10,000 의 10 %)를 넘으면 중단한다. `ytops/data.py` 의 `CALL_BUDGET` · `PROJECT_BUDGET`.
-- 상황판은 프로젝트별 YouTube Data API 사용량을 Cloud Monitoring 에서 읽어 보여준다. Actions 는 읽기 전용 Google 계정(monitoring.viewer 만 가짐)의 gcloud 자격증명을 비밀값 `GCP_MONITOR_ADC` 로 받아 쓴다 — 서비스 계정·WIF 는 결제가 없는 프로젝트라 403 이어서 쓰지 않는다. 그 계정에 다른 권한을 주지 말 것.
+- 상황판은 프로젝트별 YouTube Data API 사용량을 Cloud Monitoring 에서 읽어 보여준다(메서드는 사람 말(행위)로 표시, 원래 이름은 마우스 올리면). Actions 는 읽기 전용 Google 계정(monitoring.viewer 만 가짐)의 gcloud 자격증명을 비밀값 `GCP_MONITOR_ADC` 로 받아 쓴다 — 서비스 계정·WIF 는 결제가 없는 프로젝트라 403 이어서 쓰지 않는다. 그 계정에 다른 권한을 주지 말 것.
 
 ## 쓰는 법
 

@@ -85,6 +85,49 @@ def method_short(label: str) -> str:
     return f"{name[0].lower()}{name[1:]}s.{method.lower()}"
 
 
+ACTIVITY = {
+    "channels.list": "채널 정보·구독자 수 확인",
+    "playlistItems.list": "업로드 목록 넘겨 읽기",
+    "videos.list": "영상 정보 읽기",
+    "playlists.list": "재생목록 목록 읽기",
+    "liveBroadcasts.list": "라이브 방송 확인",
+    "liveStreams.list": "송출 상태 확인",
+    "commentThreads.list": "댓글 읽기", "comments.list": "댓글 읽기",
+    "commentThreads.insert": "댓글 달기", "comments.insert": "댓글 달기",
+    "videos.update": "영상 제목·설명 고치기",
+    "thumbnails.set": "썸네일 바꾸기",
+    "videos.insert": "영상 올리기",
+    "playlists.insert": "재생목록 만들기", "playlistItems.insert": "재생목록에 담기",
+    "search.list": "검색 (1번에 100단위)",
+}
+RESOURCE_KO = {"videos": "영상", "playlists": "재생목록", "playlistItems": "재생목록 항목", "channels": "채널",
+               "captions": "자막", "comments": "댓글", "commentThreads": "댓글", "subscriptions": "구독",
+               "liveBroadcasts": "라이브 방송", "liveStreams": "송출", "thumbnails": "썸네일", "search": "검색"}
+VERB_KO = {"list": "읽기", "insert": "만들기", "update": "고치기", "delete": "지우기", "set": "바꾸기",
+           "download": "내려받기", "rate": "평가"}
+
+
+def activity(short: str) -> str:
+    """Plain-Korean label for a short method name (e.g. 'videos.list'); unknown -> '<resource> · <verb>' fallback."""
+    if short in ACTIVITY:
+        return ACTIVITY[short]
+    if "." not in short:
+        return short
+    resource, _, verb = short.partition(".")
+    return f"{RESOURCE_KO.get(resource, resource)} · {VERB_KO.get(verb, verb)}"
+
+
+def _merged_methods(top_methods) -> list[dict]:
+    """[{name: activity, method: raw names, n}] with methods sharing an activity merged, top TOP_METHODS by n."""
+    merged: dict[str, dict] = {}
+    for raw, n in top_methods:
+        row = merged.setdefault(activity(raw), {"name": activity(raw), "raw": [], "n": 0})
+        row["raw"].append(raw)
+        row["n"] += n
+    rows = sorted(merged.values(), key=lambda r: -r["n"])[:TOP_METHODS]
+    return [{"name": r["name"], "method": ", ".join(r["raw"]), "n": r["n"]} for r in rows]
+
+
 def requests_by(series: list[dict]) -> list[tuple[str, str, str, str, int]]:
     """(hour, method, credential tail, response code, count) for every non-empty bucket."""
     rows: dict[tuple, int] = defaultdict(int)
@@ -130,7 +173,7 @@ def format_report(project: Project, used: int, limit: int, reset_at_kst: datetim
     if by_credential:
         lines.append("  어디서    " + " · ".join(f"{c} {n:,}" for c, n in by_credential.items()))
     if top_methods:
-        lines.append("  메서드    " + " · ".join(f"{m} {n:,}" for m, n in top_methods))
+        lines.append("  무슨 일에  " + " · ".join(f"{activity(m)} {n:,} ({m})" for m, n in top_methods))
     if analytics_used is not None:
         lines.append(f"  Analytics {analytics_used:,} / {ANALYTICS_LIMIT:,}")
     return "\n".join(lines)
@@ -326,7 +369,7 @@ def _site_project(info: dict, names: dict[str, str]) -> dict:
         "reset_at": info.get("reset_at"),
         "hours": _sorted_hours(info.get("hours") or {}),
         "apps": apps,
-        "methods": [{"name": m, "n": n} for m, n in (info.get("top_methods") or [])][:TOP_METHODS],
+        "methods": _merged_methods(info.get("top_methods") or []),
         "analytics_used": info.get("analytics_used"), "analytics_limit": ANALYTICS_LIMIT,
         "error": error,
     }

@@ -74,7 +74,7 @@ def test_report_layout():
     assert lines[1] == "  Data API  1,830 / 10,000  (18%)  · 17:00 에 0 으로 돌아감 · 11/08 14:02 기준"
     assert lines[2] == "  시간대별  11/08 09시 420 · 11시 12 · 11/09 01시 6"
     assert lines[3] == "  어디서    abcdefgh… 1,790 · ijklmnop… 40"
-    assert lines[4] == "  메서드    playlistItems.list 1,200 · videos.list 400"
+    assert lines[4] == "  무슨 일에  업로드 목록 넘겨 읽기 1,200 (playlistItems.list) · 영상 정보 읽기 400 (videos.list)"
     assert lines[5] == "  Analytics 3,120 / 100,000"
 
 
@@ -294,7 +294,8 @@ def test_quota_for_site_shapes_a_project():
     assert p["hours"] == [{"h": "11/07 17시", "n": 138}, {"h": "11/08 09시", "n": 420}]  # chronological, zero dropped
     assert p["apps"] == [{"name": "yt-ops 열쇠 (찰나 공용)", "code": "v63007rf", "n": 1790},
                          {"name": "ijklmnop", "code": "ijklmnop", "n": 40}]  # unknown code -> the code itself
-    assert p["methods"] == [{"name": "playlistItems.list", "n": 1200}, {"name": "videos.list", "n": 400}]
+    assert p["methods"] == [{"name": "업로드 목록 넘겨 읽기", "method": "playlistItems.list", "n": 1200},
+                            {"name": "영상 정보 읽기", "method": "videos.list", "n": 400}]
     assert (p["analytics_used"], p["analytics_limit"], p["error"]) == (246, 100000, None)
     assert json.dumps(out)
 
@@ -333,3 +334,23 @@ def test_load_for_site_reads_file(tmp_path):
     f = tmp_path / "q.json"
     f.write_text(json.dumps([_info()], ensure_ascii=False), encoding="utf-8")
     assert quota.load_for_site(f, {})["projects"][0]["pct"] == 18
+
+
+def test_activity_known_and_fallback():
+    assert quota.activity("videos.list") == "영상 정보 읽기"
+    assert quota.activity("captions.download") == "자막 · 내려받기"
+    assert quota.activity("foo.list") == "foo · 읽기"  # unknown part kept as-is
+    assert quota.activity("weird") == "weird"
+
+
+def test_quota_for_site_merges_methods_with_same_activity():
+    tm = [["commentThreads.list", 50], ["videos.list", 40], ["comments.list", 30], ["channels.list", 5]]
+    methods = quota.quota_for_site([_info(top_methods=tm)], {})["projects"][0]["methods"]
+    assert methods[0] == {"name": "댓글 읽기", "method": "commentThreads.list, comments.list", "n": 80}
+    assert [m["name"] for m in methods] == ["댓글 읽기", "영상 정보 읽기", "채널 정보·구독자 수 확인"]
+
+
+def test_quota_for_site_caps_after_merging():
+    tm = [["commentThreads.list", 90], ["comments.list", 80]] + [[f"m{i}.x", 10 - i] for i in range(6)]
+    methods = quota.quota_for_site([_info(top_methods=tm)], {})["projects"][0]["methods"]
+    assert len(methods) == 5 and methods[0]["n"] == 170
