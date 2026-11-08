@@ -123,6 +123,7 @@ img { max-width: 100%; }
 /* ---------- API usage (#api) ---------- */
 .apinote { margin: 0 0 var(--gap); color: var(--ink-2); max-width: 1100px; }
 .apigrid { display: flex; flex-direction: column; gap: var(--gap); max-width: 1100px; }
+.apigrid .hrow { grid-template-columns: minmax(80px, 260px) 1fr auto; }  /* app names are longer than video titles' label column */
 .qtrack { height: 8px; border-radius: 4px; background: var(--track); }
 .qtrack i { height: 8px; border-radius: 4px; }
 .qwhen { font-size: 16px; color: var(--ink-2); }
