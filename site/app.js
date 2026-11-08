@@ -163,7 +163,8 @@ function renderApi() {
   const limit = (projects.find((p) => !isNull(p.limit)) || {}).limit || 10000;
   const size = Math.max(0, ...projects.map((p) => (p.channels || []).length));
   const intro = `<p class="apinote">한도는 Google 프로젝트(채널 ${fmt(size || 4)}개 묶음)마다 하루 ${fmt(limit)} 단위예요. 다 쓰면 그날 수집이 멈추고, 태평양 자정(한국 16~17시)에 0 으로 돌아가요.</p>`;
-  const asOf = q && q.as_of ? `<p class="qwhen n">${hm(q.as_of)} 기준 · 수집이 돌 때마다 새로 읽어요 (보통 2시간 간격)</p>` : "";
+  // Numbers refresh with each collection run (09:30 and every odd hour KST) and reach the page ~10 min later.
+  const asOf = q && q.as_of ? `<p class="qwhen n">${hm(q.as_of)} 기준 · 숫자는 매일 09:30 과 홀수 시 정각(01·03·…·23시) 수집 뒤 10분쯤 지나 바뀌고, 17시 수집 뒤 0 근처로 돌아가요</p>` : "";
   if (!projects.length) return `${intro}<article class="card h-grey"><div class="fail">API 사용량을 확인하지 못했어요</div></article>`;
   return `${intro}${asOf}<div class="apigrid">${projects.map(quotaCard).join("")}</div>`;
 }
