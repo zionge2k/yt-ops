@@ -26,7 +26,7 @@ const ymd = (d) => { if (!d) return "—"; const [, m, dd] = d.split("-"); retur
 const ymdFull = (d) => { if (!d) return "—"; const [y, m, dd] = d.split("-"); return `${y}.${+m}.${+dd}`; };
 const COLOR = { red: "var(--red)", purple: "var(--purple)", blue: "var(--blue)", grey: "var(--off)" };
 const col = (s) => COLOR[s] || COLOR.grey;
-const nameOf = (key) => { const c = DATA.channels.find((x) => x.key === key); return c ? c.display : key; };
+const nameOf = (key) => { if (key == null) return "상황판"; const c = DATA.channels.find((x) => x.key === key); return c ? c.display : key; };
 
 function store(op, key, value) {
   try {

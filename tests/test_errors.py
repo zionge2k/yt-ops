@@ -54,3 +54,9 @@ def test_other_message_is_cut_at_60():
 
 def test_403_without_reason():
     assert human_error({"status": 403}, NOW) == "API 접근 거부"
+
+
+def test_render_stage_error_names_the_table():
+    e = {"channel": None, "stage": "render", "error": "UndefinedTable", "table": "yt_audience"}
+    assert human_error(e, NOW) == "화면 만들 때 yt_audience 를 읽지 못했어요 (UndefinedTable)"
+    assert "표" in human_error({"stage": "render", "error": "X"}, NOW)

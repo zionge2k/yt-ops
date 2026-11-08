@@ -1,6 +1,8 @@
 """Render DB rows into the data.json (v3) structure the dashboard page reads."""
 from __future__ import annotations
 
+import re
+import sys
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -67,11 +69,18 @@ def _latest_per_channel(rows, order_key):
     return out
 
 
-def _safe_fetch(conn, sql, params=()):
-    """Read a table added in v3; a missing table (migration not applied yet) yields no rows."""
+def _safe_fetch(conn, sql, params=(), *, problems: list[dict] | None = None):
+    """Read an optional table; on failure return no rows but record the problem so the page shows it."""
     try:
         return fetch(conn, sql, params)
-    except Exception:  # noqa: BLE001 — render must not stop on one missing table
+    except Exception as e:  # noqa: BLE001 — render must not stop on one unreadable table
+        m = re.search(r"\bfrom\s+(\S+)", sql, re.I)
+        table = m.group(1) if m else None
+        msg = str(e)[:200]
+        print(f"[render] {table}: {type(e).__name__}: {msg}", file=sys.stderr)
+        if problems is not None:
+            problems.append({"channel": None, "stage": "render", "error": type(e).__name__,
+                             "message": msg, "table": table})
         return []
 
 
@@ -386,13 +395,15 @@ def build(conn, *, today: date, config, now: datetime | None = None, quota: dict
     runs = fetch(conn, "select * from yt_run_log order by started_at desc limit 200")
 
     recent_start = latest - timedelta(days=RECENT_DAYS - 1) if latest else None
+    problems: list[dict] = []
     vd_rows = _safe_fetch(conn, "select * from yt_video_daily where day >= %s and day <= %s",
-                          (recent_start, latest)) if latest else []
-    videos = {r["video_id"]: r for r in _safe_fetch(conn, "select * from yt_video")}
-    playlists = {r["playlist_id"]: r for r in _safe_fetch(conn, "select * from yt_playlist")}
-    items = _safe_fetch(conn, "select * from yt_playlist_item")
+                          (recent_start, latest), problems=problems) if latest else []
+    videos = {r["video_id"]: r for r in _safe_fetch(conn, "select * from yt_video", problems=problems)}
+    playlists = {r["playlist_id"]: r for r in _safe_fetch(conn, "select * from yt_playlist", problems=problems)}
+    items = _safe_fetch(conn, "select * from yt_playlist_item", problems=problems)
     audience_rows = _safe_fetch(conn, "select * from yt_audience where (channel_key, as_of) in "
-                                      "(select channel_key, max(as_of) from yt_audience group by 1)")
+                                      "(select channel_key, max(as_of) from yt_audience group by 1)",
+                                (), problems=problems)
 
     out_channels, board, subs_trend, watch_trend, detail = [], {}, {}, {}, {}
     errors: list[dict] = []
@@ -429,6 +440,9 @@ def build(conn, *, today: date, config, now: datetime | None = None, quota: dict
             "subs_sources": _subs_sources(recent_daily),
             "genres": _genres(per_video, videos, playlists, [i for i in items if i["channel_key"] == k]),
         }
+
+    # Render-side read failures are shown on the page but are not collect failures (channels untouched).
+    errors += [{**p, "human": human_error(p, now)} for p in problems]
 
     return {
         "v": 3,

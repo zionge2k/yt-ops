@@ -359,6 +359,29 @@ def test_missing_v3_tables_do_not_stop_render(monkeypatch):
     assert dt["top_long"] == [] and dt["genres"] == []
     assert dt["audience"]["viewers"]["age_gender"] == []
     assert d["board"]["soombi"]["subscribers"] == 905
+    problems = [e for e in d["errors"] if e["stage"] == "render"]
+    assert sorted(e["table"] for e in problems) == ["yt_audience", "yt_playlist", "yt_playlist_item", "yt_video", "yt_video_daily"]
+    assert all(e["table"] in e["human"] and e["channel"] is None for e in problems)
+    # a render-side read failure is not a collect failure
+    assert not any(c["collect_failed"] for c in d["channels"])
+
+
+def test_safe_fetch_success_records_nothing(monkeypatch):
+    monkeypatch.setattr(render, "fetch", lambda conn, sql, params=(): [{"a": 1}])
+    problems = []
+    assert render._safe_fetch(None, "select * from yt_video", problems=problems) == [{"a": 1}]
+    assert problems == []
+
+
+def test_safe_fetch_failure_records_problem(monkeypatch, capsys):
+    def boom(conn, sql, params=()):
+        raise RuntimeError("relation does not exist")
+    monkeypatch.setattr(render, "fetch", boom)
+    problems = []
+    assert render._safe_fetch(None, "select * from yt_video where x = %s", (1,), problems=problems) == []
+    assert problems == [{"channel": None, "stage": "render", "error": "RuntimeError",
+                         "message": "relation does not exist", "table": "yt_video"}]
+    assert "yt_video" in capsys.readouterr().err
 
 
 def test_empty_db(monkeypatch):

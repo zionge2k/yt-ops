@@ -29,6 +29,8 @@ def human_error(err: dict, now: datetime) -> str:
     name = err.get("error")
     message = err.get("message")
     low = (reason or "").lower()
+    if err.get("stage") == "render":
+        return f"화면 만들 때 {err.get('table') or '표'} 를 읽지 못했어요 ({name})"
     if status == 403 and ("quota" in low or "dailylimit" in low):
         return f"API 하루 한도 소진 · {next_quota_reset(now):%H:%M} 에 다시 열림"
     if status == 403:
