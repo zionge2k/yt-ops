@@ -1,7 +1,7 @@
 name: refresh
 
 # 숨비가 상황판의 "지금 새로고침" 을 누르면 Vercel 함수가 이 워크플로를 실행한다.
-# 구독자 · 시청시간 · 라이브만 다시 읽는다(Analytics 는 3일 지연이라 낮에 다시 읽어도 보통 그대로).
+# 아침 09:30 수집과 같은 전체 수집을 지금 한 번 더 한다(스키마 적용만 뺌). 프로젝트당 약 400단위라 함수가 30분에 1번으로 막는다.
 on:
   workflow_dispatch:
 
@@ -18,7 +18,7 @@ permissions:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
@@ -60,14 +60,14 @@ jobs:
         run: pip install pytest && python -m pytest -q
 
       # Deploy must happen even if collection reports errors; failure is surfaced in the last step.
-      - name: 새로고침 수집
+      - name: 전체 수집 (새로고침)
         id: collect
         continue-on-error: true
         # explicit shell: the default `bash -e` has no pipefail, so tee would hide python's exit code
         shell: bash
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-        run: python -m ytops collect --all --only channel_daily,subs,live | tee "$RUNNER_TEMP/collect.log"
+        run: python -m ytops collect --all | tee "$RUNNER_TEMP/collect.log"
 
       # Monitoring 읽기는 결제 없는 프로젝트의 서비스 계정으론 거절되므로(403 "requires billing"),
       # Mac 의 gcloud 와 같은 사용자 자격증명(읽기 전용 계정 zion.geek.py, monitoring.viewer 만)을 쓴다.

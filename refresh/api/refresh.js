@@ -1,7 +1,7 @@
 // Vercel function: verifies the dashboard password, then dispatches the refresh.yml workflow.
 import { timingSafeEqual } from "node:crypto";
 
-export const OWNER = "zionge2k", REPO = "yt-ops", WORKFLOW = "refresh.yml", COOLDOWN_MS = 10 * 60 * 1000;
+export const OWNER = "zionge2k", REPO = "yt-ops", WORKFLOW = "refresh.yml", COOLDOWN_MS = 30 * 60 * 1000;  // a full collection costs ~400 quota units per project
 // A wrong password answers slowly: the encrypted data file is public anyway, so this oracle must not be
 // a faster way to guess the password than attacking that file offline.
 export const FAIL_DELAY_MS = 1500;

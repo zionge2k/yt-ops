@@ -21,7 +21,8 @@ def test_refresh_workflow_is_dispatch_only_and_light():
     text = _text("refresh.yml")
     assert not re.search(r"^\s*schedule:", text, re.M)
     assert "workflow_dispatch" in text
-    assert "--only channel_daily,subs,live" in text
+    # the button re-runs the whole morning collection (minus schema), not a subset
+    assert re.search(r"python -m ytops collect --all \|", text) and "--only" not in text
     assert "schema --apply" not in text
     assert _group(text) not in (_group(_text("daily.yml")), _group(_text("live.yml")))
 

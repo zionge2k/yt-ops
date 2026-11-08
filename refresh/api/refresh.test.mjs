@@ -44,18 +44,18 @@ test("missing env is 500 server_not_configured", async () => {
   assert.equal(f.calls.length, 0);
 });
 
-test("run 3 minutes ago is 429 with retry_after_s about 420 and no dispatch", async () => {
+test("run 3 minutes ago is 429 with retry_after_s about 1620 and no dispatch", async () => {
   const f = fake({ runs: runsOf(3) });
   const r = await go({ password: "pw-secret" }, f);
   assert.equal(r.status, 429);
   assert.equal(r.json.error, "too_soon");
-  assert.equal(r.json.retry_after_s, 420);
+  assert.equal(r.json.retry_after_s, 1620);
   assert.equal(r.json.started_at, iso(3));
   assert.ok(f.calls.every((c) => c.init.method !== "POST"));
 });
 
-test("run 20 minutes ago dispatches main and is 202", async () => {
-  const f = fake({ runs: runsOf(20) });
+test("run 40 minutes ago dispatches main and is 202", async () => {
+  const f = fake({ runs: runsOf(40) });
   const r = await go({ password: "pw-secret" }, f);
   assert.equal(r.status, 202);
   assert.equal(r.json.ok, true);
@@ -81,7 +81,7 @@ test("GitHub 500 on the runs list is 502 github_unavailable", async () => {
 });
 
 test("dispatch 403 is 502 dispatch_failed and leaks no secrets", async () => {
-  const f = fake({ runs: runsOf(20), dispatch: { status: 403 } });
+  const f = fake({ runs: runsOf(40), dispatch: { status: 403 } });
   const r = await go({ password: "pw-secret" }, f);
   assert.equal(r.status, 502);
   assert.deepEqual(r.json, { error: "dispatch_failed", status: 403 });

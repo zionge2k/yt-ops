@@ -10,7 +10,7 @@ let sampleMode = false;
 let watchWin = "28";
 const REFRESH_URL = "https://yt-ops-refresh.vercel.app/api/refresh";  // Vercel function (refresh/README.md); empty hides the button
 const REFRESH_LABEL = "지금 새로고침";
-const POLL_MS = 30000, POLL_MAX_MS = 8 * 60 * 1000;
+const POLL_MS = 30000, POLL_MAX_MS = 10 * 60 * 1000;
 // Button state lives here (not in the DOM) because render() rebuilds the header on every hash change.
 let rf = { text: REFRESH_LABEL, disabled: false };
 let rfTimer = null, rfPoll = null;
@@ -375,7 +375,7 @@ async function startRefresh() {
     info = await res.json().catch(() => ({}));
   } catch (e) { res = null; }
   if (res && res.status === 202) {
-    setRefresh("새로 읽는 중 · 2~3분 걸려요", true);
+    setRefresh("새로 읽는 중 · 3~4분 걸려요", true);
     pollForNewData();
   } else if (res && res.status === 429) {
     const secs = Math.min(Math.max(Number(info.retry_after_s) || 60, 1), 600);
