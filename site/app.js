@@ -8,7 +8,7 @@ const app = document.getElementById("app");
 let DATA = null;
 let sampleMode = false;
 let watchWin = "28";
-const REFRESH_URL = "";  // Vercel function URL (refresh/README.md); empty hides the button
+const REFRESH_URL = "https://yt-ops-refresh.vercel.app/api/refresh";  // Vercel function (refresh/README.md); empty hides the button
 const REFRESH_LABEL = "지금 새로고침";
 const POLL_MS = 30000, POLL_MAX_MS = 8 * 60 * 1000;
 // Button state lives here (not in the DOM) because render() rebuilds the header on every hash change.
