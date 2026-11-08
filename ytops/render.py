@@ -360,7 +360,7 @@ def _subs_sources(rows) -> dict:
             "lost": _sum(r.get("subs_lost") for r in rows)}
 
 
-def build(conn, *, today: date, config, now: datetime | None = None) -> dict:
+def build(conn, *, today: date, config, now: datetime | None = None, quota: dict | None = None) -> dict:
     now = now or datetime.now(timezone.utc)
     channels, th = config["channels"], config["thresholds"]
     up, down = th["up_pct"], th["down_pct"]
@@ -443,4 +443,5 @@ def build(conn, *, today: date, config, now: datetime | None = None) -> dict:
         "watch_trend": watch_trend,
         "detail": detail,
         "errors": errors,
+        "quota": quota,
     }

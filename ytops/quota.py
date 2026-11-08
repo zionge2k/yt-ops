@@ -282,3 +282,67 @@ def report_from(info: dict) -> str:
     return format_report(project, info["used"], info["limit"], datetime.fromisoformat(info["reset_at"]),
                          info["hours"], info["by_credential"], [tuple(m) for m in info["top_methods"]],
                          info["analytics_used"], datetime.fromisoformat(info["as_of"]))
+
+
+# ---------- dashboard shaping ----------
+
+def quota_status(used: int | None, limit: int | None) -> str:
+    """ok < 50 %, warn < 80 %, bad < 100 %, out >= 100 %; unknown when usage is not known."""
+    if used is None or not limit:
+        return "unknown"
+    if used >= limit:
+        return "out"
+    if used * 100 >= 80 * limit:
+        return "bad"
+    return "warn" if used * 100 >= 50 * limit else "ok"
+
+
+def _sorted_hours(hours: dict[str, int]) -> list[dict]:
+    """Chronological [{h, n}] with zero hours dropped (keys are 'MM/DD HH시'; Dec -> Jan wraps the year)."""
+    months = {int(k[:2]) for k in hours}
+    wraps = 12 in months and 1 in months
+
+    def order(key: str) -> tuple[int, str]:
+        month = int(key[:2])
+        return (month + 12 if wraps and month == 1 else month, key[3:])
+
+    return [{"h": k, "n": hours[k]} for k in sorted(hours, key=order) if hours[k]]
+
+
+def _site_project(info: dict, names: dict[str, str]) -> dict:
+    used, limit = info.get("used"), info.get("limit")
+    error = info.get("error")
+    known = used is not None and not error
+    apps = []
+    for key, n in sorted((info.get("by_credential") or {}).items(), key=lambda kv: -kv[1]):
+        code = key.rstrip("…")
+        apps.append({"name": names.get(code, code), "code": code, "n": n})
+    return {
+        "id": info["project"], "label": info.get("label", info["project"]), "channels": info.get("channels", []),
+        "used": used if known else None, "limit": limit,
+        "pct": used * 100 // limit if known and limit else None,
+        "status": quota_status(used, limit) if known else "unknown",
+        "reset_at": info.get("reset_at"),
+        "hours": _sorted_hours(info.get("hours") or {}),
+        "apps": apps,
+        "methods": [{"name": m, "n": n} for m, n in (info.get("top_methods") or [])][:TOP_METHODS],
+        "analytics_used": info.get("analytics_used"), "analytics_limit": ANALYTICS_LIMIT,
+        "error": error,
+    }
+
+
+def quota_for_site(raw: list | dict, names: dict[str, str]) -> dict:
+    """The `quota` block of data.json from `ytops quota --json` output (a list of per-project dicts)."""
+    infos = raw.get("projects", []) if isinstance(raw, dict) else raw
+    as_of = max((i["as_of"] for i in infos if i.get("as_of")), default=None)
+    return {"as_of": as_of, "projects": [_site_project(i, names) for i in infos]}
+
+
+def load_for_site(path, names: dict[str, str]) -> dict | None:
+    """quota_for_site of a quota JSON file; None (with one warning line) when it is missing or unreadable."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            return quota_for_site(json.load(f), names)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+        print(f"경고: API 사용량 파일을 읽지 못해 건너뜀 ({type(e).__name__})")
+        return None

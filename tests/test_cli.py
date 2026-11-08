@@ -56,7 +56,7 @@ def test_cli_requires_target(monkeypatch):
 
 def test_cli_render_writes_json(monkeypatch, tmp_path):
     monkeypatch.setattr(cli.store, "connect", lambda: "conn")
-    monkeypatch.setattr(cli.render, "build", lambda conn, *, today, config: {"latest_day": today, "lag_days": 3, "k": "한글"})
+    monkeypatch.setattr(cli.render, "build", lambda conn, *, today, config, quota=None: {"latest_day": today, "lag_days": 3, "k": "한글"})
     out = tmp_path / "sub" / "data.json"
     assert cli.main(["render", "--out", str(out), "--today", "2026-11-07"]) == 0
     assert '"latest_day": "2026-11-07"' in out.read_text(encoding="utf-8") and "한글" in out.read_text(encoding="utf-8")
@@ -160,3 +160,30 @@ def test_quota_out_exit_1_when_nothing_read_but_file_still_written(monkeypatch, 
     out = tmp_path / "q.json"
     assert cli.main(["quota", "--json", "--out", str(out)]) == 1
     assert all(r["used"] is None and r["error"] for r in json.loads(out.read_text(encoding="utf-8")))
+
+
+def _render_args(tmp_path, *extra):
+    return ["render", "--out", str(tmp_path / "d.json"), "--today", "2026-11-07", *extra]
+
+
+def test_render_passes_quota_block(monkeypatch, tmp_path):
+    import json
+    got = {}
+    monkeypatch.setattr(cli.store, "connect", lambda: "conn")
+    monkeypatch.setattr(cli.render, "build", lambda conn, *, today, config, quota=None:
+                        got.update(quota=quota) or {"latest_day": today, "lag_days": 0})
+    f = tmp_path / "q.json"
+    f.write_text(json.dumps([_info("proj-a", 1830)]), encoding="utf-8")
+    assert cli.main(_render_args(tmp_path, "--quota", str(f))) == 0
+    assert got["quota"]["projects"][0]["used"] == 1830 and got["quota"]["projects"][0]["pct"] == 18
+
+
+def test_render_missing_quota_file_gives_null_and_does_not_fail(monkeypatch, tmp_path, capsys):
+    got = {}
+    monkeypatch.setattr(cli.store, "connect", lambda: "conn")
+    monkeypatch.setattr(cli.render, "build", lambda conn, *, today, config, quota=None:
+                        got.update(quota=quota) or {"latest_day": today, "lag_days": 0})
+    assert cli.main(_render_args(tmp_path, "--quota", str(tmp_path / "missing.json"))) == 0
+    assert got["quota"] is None and "경고" in capsys.readouterr().out
+    cli.main(_render_args(tmp_path))
+    assert got["quota"] is None

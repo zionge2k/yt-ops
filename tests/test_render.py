@@ -9,7 +9,7 @@ TODAY = date(2026, 11, 7)
 NOW = datetime(2026, 11, 7, 1, 10, tzinfo=UTC)  # 10 minutes after the fixture's live snapshots
 LATEST = date(2026, 11, 4)
 KEYS = {"v", "generated_at", "last_daily_ok_at", "latest_day", "lag_days", "order", "channels", "board",
-        "subs_trend", "watch_trend", "detail", "errors"}
+        "subs_trend", "watch_trend", "detail", "errors", "quota"}
 
 
 def _day_row(key, day, **kw):
@@ -528,3 +528,10 @@ def test_errors_carry_human_text(monkeypatch):
     assert [e["human"] for e in d["errors"]] == [want]
     pli = next(c for c in d["channels"] if c["key"] == "pliwav")
     assert [e["human"] for e in pli["errors"]] == [want]
+
+
+def test_quota_block_defaults_to_null_and_is_passed_through(monkeypatch):
+    assert _build(monkeypatch)["quota"] is None
+    monkeypatch.setattr(render, "fetch", lambda conn, sql, params=(): [])
+    block = {"as_of": "x", "projects": []}
+    assert render.build(None, today=TODAY, config=_cfg(), now=NOW, quota=block)["quota"] == block

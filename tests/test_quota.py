@@ -258,3 +258,78 @@ def test_token_for_falls_back_when_refresh_fails(monkeypatch):
     monkeypatch.setattr(quota.google.auth, "default", lambda scopes=None: (Bad(), "p"))
     monkeypatch.setattr(quota, "gcloud_token_for", lambda project, accounts: "g")
     assert quota.token_for("p1", None) == "g"
+
+
+# ---------- dashboard shaping ----------
+
+def _info(used=1830, limit=10000, **over):
+    base = {"project": "proj-a", "label": "숨비네", "channels": ["soombi", "a2p"], "used": used, "limit": limit,
+            "hours": {"11/08 09시": 420, "11/07 17시": 138, "11/08 03시": 0},
+            "by_credential": {"ijklmnop…": 40, "v63007rf…": 1790},
+            "top_methods": [["playlistItems.list", 1200], ["videos.list", 400]],
+            "analytics_used": 246, "reset_at": "2026-11-08T17:00:00+09:00",
+            "as_of": "2026-11-08T13:39:00+09:00", "error": None}
+    return {**base, **over}
+
+
+@pytest.mark.parametrize("used,status", [
+    (4999, "ok"), (5000, "warn"), (7999, "warn"), (8000, "bad"), (9999, "bad"), (10000, "out"), (12000, "out"),
+    (0, "ok"),
+])
+def test_quota_status_thresholds(used, status):
+    assert quota.quota_status(used, 10000) == status
+
+
+def test_quota_status_unknown():
+    assert quota.quota_status(None, 10000) == "unknown"
+
+
+def test_quota_for_site_shapes_a_project():
+    out = quota.quota_for_site([_info()], {"v63007rf": "yt-ops 열쇠 (찰나 공용)"})
+    assert out["as_of"] == "2026-11-08T13:39:00+09:00"
+    p = out["projects"][0]
+    assert (p["id"], p["label"], p["channels"]) == ("proj-a", "숨비네", ["soombi", "a2p"])
+    assert (p["used"], p["limit"], p["pct"], p["status"]) == (1830, 10000, 18, "ok")
+    assert p["reset_at"] == "2026-11-08T17:00:00+09:00"
+    assert p["hours"] == [{"h": "11/07 17시", "n": 138}, {"h": "11/08 09시", "n": 420}]  # chronological, zero dropped
+    assert p["apps"] == [{"name": "yt-ops 열쇠 (찰나 공용)", "code": "v63007rf", "n": 1790},
+                         {"name": "ijklmnop", "code": "ijklmnop", "n": 40}]  # unknown code -> the code itself
+    assert p["methods"] == [{"name": "playlistItems.list", "n": 1200}, {"name": "videos.list", "n": 400}]
+    assert (p["analytics_used"], p["analytics_limit"], p["error"]) == (246, 100000, None)
+    assert json.dumps(out)
+
+
+def test_quota_for_site_accepts_projects_dict_and_methods_capped_at_five():
+    methods = [[f"m{i}", 10 - i] for i in range(8)]
+    out = quota.quota_for_site({"projects": [_info(top_methods=methods)]}, {})
+    assert len(out["projects"][0]["methods"]) == 5
+
+
+def test_quota_for_site_orders_hours_across_new_year():
+    p = quota.quota_for_site([_info(hours={"01/01 02시": 5, "12/31 23시": 7})], {})["projects"][0]
+    assert [h["h"] for h in p["hours"]] == ["12/31 23시", "01/01 02시"]
+
+
+def test_quota_for_site_errored_project_is_unknown():
+    bad = _info(used=None, limit=None, hours={}, by_credential={}, top_methods=[], analytics_used=None,
+                error="nowbrd-release: 읽을 수 있는 계정이 없어요.")
+    p = quota.quota_for_site([_info(), bad], {})["projects"][1]
+    assert p["status"] == "unknown" and p["used"] is None and p["pct"] is None
+    assert p["error"].startswith("nowbrd-release") and p["hours"] == [] and p["apps"] == []
+
+
+def test_load_for_site_missing_or_broken_file_is_none(tmp_path, capsys):
+    assert quota.load_for_site(tmp_path / "nope.json", {}) is None
+    assert capsys.readouterr().out.count("\n") == 1
+    broken = tmp_path / "b.json"
+    broken.write_text("{not json", encoding="utf-8")
+    assert quota.load_for_site(broken, {}) is None
+    weird = tmp_path / "w.json"
+    weird.write_text('[{"no": "project"}]', encoding="utf-8")
+    assert quota.load_for_site(weird, {}) is None
+
+
+def test_load_for_site_reads_file(tmp_path):
+    f = tmp_path / "q.json"
+    f.write_text(json.dumps([_info()], ensure_ascii=False), encoding="utf-8")
+    assert quota.load_for_site(f, {})["projects"][0]["pct"] == 18

@@ -8,7 +8,7 @@ from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from ytops import commands, crypt, registry, render, runner, store
+from ytops import commands, crypt, quota, registry, render, runner, store
 from ytops.registry import KEYS, resolve_key
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "db" / "schema.sql"
@@ -70,7 +70,8 @@ def _status() -> int:
 def _render(args) -> int:
     today = date.fromisoformat(args.today) if args.today else datetime.now(ZoneInfo("Asia/Seoul")).date()
     config = {"channels": registry.load_channels(), "thresholds": registry.load_thresholds()}
-    data = render.build(store.connect(), today=today, config=config)
+    usage = quota.load_for_site(args.quota, registry.load_credential_names()) if args.quota else None
+    data = render.build(store.connect(), today=today, config=config, quota=usage)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", encoding="utf-8") as f:
@@ -120,6 +121,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("status")
     r = sub.add_parser("render")
     r.add_argument("--out", required=True)
+    r.add_argument("--quota", help="quota JSON from `ytops quota --json --out` (optional; adds the API usage block)")
     r.add_argument("--today", help="YYYY-MM-DD (default: today in Asia/Seoul)")
     e = sub.add_parser("encrypt")
     e.add_argument("inp", metavar="IN")
