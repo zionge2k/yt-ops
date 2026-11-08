@@ -12,3 +12,7 @@ uv.lock
 # Local design mockups and screen captures (may hold real numbers; public repo)
 docs/mockups/
 docs/screens/
+
+# Vercel function (deployed separately)
+refresh/.vercel/
+refresh/node_modules/
