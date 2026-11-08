@@ -10,8 +10,8 @@
    "resource": {
     "type": "consumed_api",
     "labels": {
-     "method": "youtube.api.v3.PlaylistItems.List",
-     "credential_id": "project_number:1:api_key:AAAA-v63007-abcdef"
+     "method": "youtube.api.v3.V3DataPlaylistItemService.List",
+     "credential_id": "oauth2:111111111111-abcdefgh1234567890abcdefghijklmn.apps.googleusercontent.com"
     }
    },
    "metricKind": "DELTA",
@@ -47,8 +47,8 @@
    "resource": {
     "type": "consumed_api",
     "labels": {
-     "method": "youtube.api.v3.Videos.List",
-     "credential_id": "oauth:BBBB-6sl59-ghijkl"
+     "method": "youtube.api.v3.V3DataVideoService.List",
+     "credential_id": "oauth2:222222222222-ijklmnop1234567890abcdefghijklmn.apps.googleusercontent.com"
     }
    },
    "metricKind": "DELTA",
@@ -75,8 +75,8 @@
    "resource": {
     "type": "consumed_api",
     "labels": {
-     "method": "youtube.api.v3.Videos.List",
-     "credential_id": "oauth:BBBB-6sl59-ghijkl"
+     "method": "youtube.api.v3.V3DataVideoService.List",
+     "credential_id": "oauth2:222222222222-ijklmnop1234567890abcdefghijklmn.apps.googleusercontent.com"
     }
    },
    "metricKind": "DELTA",

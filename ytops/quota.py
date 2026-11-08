@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import urllib.error
 import urllib.request
@@ -14,6 +15,7 @@ from ytops.errors import KST, last_quota_reset, next_quota_reset
 from ytops.registry import Project
 
 DEFAULT_LIMIT = 10000
+DAY_LIMIT = "defaultPerDayPerProject"
 ANALYTICS_LIMIT = 100000
 TOP_METHODS = 5
 DATA_SERVICE = "youtube.googleapis.com"
@@ -58,19 +60,41 @@ def hourly(series: list[dict], tz=KST) -> dict[str, int]:
     return dict(sorted(out.items()))
 
 
+def credential_short(cid: str) -> str:
+    """Short, stable label for an OAuth client id: first 8 chars after the project-number prefix."""
+    if not cid or cid == "?":
+        return "(없음)"
+    cid = cid.split(":", 1)[-1].removesuffix(".apps.googleusercontent.com")
+    cid = re.sub(r"^\d+-", "", cid)
+    return cid[:8] + "…"
+
+
+_METHOD_RE = re.compile(r"V3Data(\w+?)Service\.(\w+)")
+
+
+def method_short(label: str) -> str:
+    m = _METHOD_RE.search(label)
+    if not m:
+        return label.replace("youtube.api.v3.", "")
+    name, method = m.groups()
+    return f"{name[0].lower()}{name[1:]}s.{method.lower()}"
+
+
 def requests_by(series: list[dict]) -> list[tuple[str, str, str, str, int]]:
     """(hour, method, credential tail, response code, count) for every non-empty bucket."""
     rows: dict[tuple, int] = defaultdict(int)
     for ts, p, v in _points(series):
         labels = {**ts.get("resource", {}).get("labels", {}), **ts.get("metric", {}).get("labels", {})}
-        key = (_hour_key(p, KST), labels.get("method", "?").replace("youtube.api.v3.", ""),
-               labels.get("credential_id", "?")[-14:], labels.get("response_code", "?"))
+        key = (_hour_key(p, KST), method_short(labels.get("method", "?")),
+               credential_short(labels.get("credential_id", "?")), labels.get("response_code", "?"))
         rows[key] += v
     return [(*k, v) for k, v in sorted(rows.items()) if v]
 
 
 def limit_from(series: list[dict], default: int = DEFAULT_LIMIT) -> int:
-    values = [v for _, _, v in _points(series)]
+    # quota/limit holds several limits per service (per day / per minute ...); only the daily one counts.
+    values = [v for ts, _, v in _points(series)
+              if ts.get("metric", {}).get("labels", {}).get("limit_name", DAY_LIMIT) == DAY_LIMIT]
     return max(values) if values else default
 
 
@@ -99,7 +123,7 @@ def format_report(project: Project, used: int, limit: int, reset_at_kst: datetim
     if _hours_text(hours):
         lines.append(f"  시간대별  {_hours_text(hours)}")
     if by_credential:
-        lines.append("  어디서    " + " · ".join(f"…{c} {n:,}" for c, n in by_credential.items()))
+        lines.append("  어디서    " + " · ".join(f"{c} {n:,}" for c, n in by_credential.items()))
     if top_methods:
         lines.append("  메서드    " + " · ".join(f"{m} {n:,}" for m, n in top_methods))
     if analytics_used is not None:
@@ -175,8 +199,8 @@ def gcloud_token_for(project: str, accounts: list[str] | None, run=_run, probe=_
 
 # ---------- collection ----------
 
-def _flt(metric_type: str, service: str) -> str:
-    return f'metric.type="{metric_type}" AND resource.labels.service="{service}"'
+def _flt(metric_type: str, service: str, extra: str = "") -> str:
+    return f'metric.type="{metric_type}" AND resource.labels.service="{service}"' + (f" AND {extra}" if extra else "")
 
 
 def collect_project(mon, project: Project, now: datetime) -> dict:
@@ -186,7 +210,7 @@ def collect_project(mon, project: Project, now: datetime) -> dict:
     svc = ["resource.labels.service"]
     usage = mon.series(project.id, _flt(USAGE_TYPE, DATA_SERVICE), start, end, 3600, "ALIGN_SUM", svc)
     try:
-        limit = limit_from(mon.series(project.id, _flt(LIMIT_TYPE, DATA_SERVICE), start, end, window_s,
+        limit = limit_from(mon.series(project.id, _flt(LIMIT_TYPE, DATA_SERVICE, f'metric.labels.limit_name="{DAY_LIMIT}"'), start, end, window_s,
                                       "ALIGN_MAX", svc))
     except Exception:
         limit = DEFAULT_LIMIT

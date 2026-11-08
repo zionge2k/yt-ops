@@ -3,7 +3,9 @@
   {
    "metric": {
     "type": "serviceruntime.googleapis.com/quota/limit",
-    "labels": {}
+    "labels": {
+     "limit_name": "defaultPerDayPerProject"
+    }
    },
    "resource": {
     "type": "consumer_quota",
@@ -30,6 +32,78 @@
      },
      "value": {
       "int64Value": "10000"
+     }
+    }
+   ]
+  },
+  {
+   "metric": {
+    "type": "serviceruntime.googleapis.com/quota/limit",
+    "labels": {
+     "limit_name": "defaultPerMinutePerProject"
+    }
+   },
+   "resource": {
+    "type": "consumer_quota",
+    "labels": {
+     "service": "youtube.googleapis.com"
+    }
+   },
+   "metricKind": "GAUGE",
+   "valueType": "INT64",
+   "points": [
+    {
+     "interval": {
+      "startTime": "2026-11-08T05:00:00Z",
+      "endTime": "2026-11-08T05:00:00Z"
+     },
+     "value": {
+      "int64Value": "1800000"
+     }
+    },
+    {
+     "interval": {
+      "startTime": "2026-11-08T00:00:00Z",
+      "endTime": "2026-11-08T00:00:00Z"
+     },
+     "value": {
+      "int64Value": "1800000"
+     }
+    }
+   ]
+  },
+  {
+   "metric": {
+    "type": "serviceruntime.googleapis.com/quota/limit",
+    "labels": {
+     "limit_name": "defaultPerMinutePerUser"
+    }
+   },
+   "resource": {
+    "type": "consumer_quota",
+    "labels": {
+     "service": "youtube.googleapis.com"
+    }
+   },
+   "metricKind": "GAUGE",
+   "valueType": "INT64",
+   "points": [
+    {
+     "interval": {
+      "startTime": "2026-11-08T05:00:00Z",
+      "endTime": "2026-11-08T05:00:00Z"
+     },
+     "value": {
+      "int64Value": "180000"
+     }
+    },
+    {
+     "interval": {
+      "startTime": "2026-11-08T00:00:00Z",
+      "endTime": "2026-11-08T00:00:00Z"
+     },
+     "value": {
+      "int64Value": "180000"
      }
     }
    ]

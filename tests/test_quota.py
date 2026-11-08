@@ -41,15 +41,16 @@ def test_hourly_keys_in_kst():
 
 def test_requests_by():
     rows = quota.requests_by(_series("requests"))
-    assert ("11/08 09시", "PlaylistItems.List", "-v63007-abcdef"[-14:], "200", 300) in rows
-    methods = {r[1] for r in rows}
-    assert methods == {"PlaylistItems.List", "Videos.List"}
-    assert all(len(r[2]) <= 14 for r in rows)
-    assert ("11/08 12시", "Videos.List", "oauth:BBBB-6sl59-ghijkl"[-14:], "403", 5) in rows
+    assert ("11/08 09시", "playlistItems.list", "abcdefgh…", "200", 300) in rows
+    assert {r[1] for r in rows} == {"playlistItems.list", "videos.list"}
+    assert ("11/08 12시", "videos.list", "ijklmnop…", "403", 5) in rows
 
 
 def test_limit_from():
-    assert quota.limit_from(_series("limit")) == 10000
+    assert quota.limit_from(_series("limit")) == 10000  # per-minute series (1.8M, 180k) are ignored
+    assert quota.limit_from(_series("limit")[1:]) == 10000  # none left for the day limit -> default
+    unlabeled = [{"metric": {"labels": {}}, "points": [{"value": {"int64Value": "7"}}, {"value": {"int64Value": "9"}}]}]
+    assert quota.limit_from(unlabeled) == 9  # max, never a sum
     assert quota.limit_from([]) == 10000
     assert quota.limit_from([], default=5) == 5
 
@@ -63,7 +64,7 @@ def _report(used, limit=10000, analytics=3120):
     return quota.format_report(
         PROJECT, used, limit, RESET,
         {"11/08 09시": 420, "11/08 11시": 12, "11/08 13시": 0, "11/09 01시": 6},
-        {"v63007-abcdef": 1790, "6sl59-ghijkl": 40},
+        {"abcdefgh…": 1790, "ijklmnop…": 40},
         [("playlistItems.list", 1200), ("videos.list", 400)], analytics, AS_OF)
 
 
@@ -72,7 +73,7 @@ def test_report_layout():
     assert lines[0] == "숨비네 (proj-a)"
     assert lines[1] == "  Data API  1,830 / 10,000  (18%)  · 17:00 에 0 으로 돌아감 · 11/08 14:02 기준"
     assert lines[2] == "  시간대별  11/08 09시 420 · 11시 12 · 11/09 01시 6"
-    assert lines[3] == "  어디서    …v63007-abcdef 1,790 · …6sl59-ghijkl 40"
+    assert lines[3] == "  어디서    abcdefgh… 1,790 · ijklmnop… 40"
     assert lines[4] == "  메서드    playlistItems.list 1,200 · videos.list 400"
     assert lines[5] == "  Analytics 3,120 / 100,000"
 
@@ -123,6 +124,7 @@ def test_collect_project_queries_and_result():
     assert set(by_type) == {"net_usage", "limit", "request_count", "net_usageA"}
     for t in ("net_usage", "limit", "request_count"):
         assert 'resource.labels.service="youtube.googleapis.com"' in by_type[t]["filter"]
+    assert 'metric.labels.limit_name="defaultPerDayPerProject"' in by_type["limit"]["filter"]
     assert 'resource.labels.service="youtubeanalytics.googleapis.com"' in by_type["net_usageA"]["filter"]
     assert all(c["project"] == "proj-a" for c in mon.calls)
     assert by_type["net_usage"]["period_s"] == 3600 and by_type["net_usage"]["aligner"] == "ALIGN_SUM"
@@ -133,7 +135,7 @@ def test_collect_project_queries_and_result():
     assert got["used"] == 438 and got["limit"] == 10000 and got["analytics_used"] == 438
     assert got["project"] == "proj-a" and got["label"] == "숨비네"
     assert got["hours"]["11/08 09시"] == 420
-    assert got["top_methods"][0] == ["PlaylistItems.List", 302] or got["top_methods"][0] == ("PlaylistItems.List", 302)
+    assert tuple(got["top_methods"][0]) == ("playlistItems.list", 302)
     assert json.dumps(got)  # JSON-safe for `--json`
 
 
@@ -185,3 +187,23 @@ def test_gcloud_token_for_error_lists_accounts_without_tokens():
     with pytest.raises(quota.QuotaAccessError) as e:
         quota.gcloud_token_for("p2", ["a@x.com"], run=lambda cmd: "SECRET\n", probe=lambda p, t: False)
     assert "a@x.com" in str(e.value) and "SECRET" not in str(e.value) and "p2" in str(e.value)
+
+
+def test_credential_short():
+    cid = "oauth2:543780518761-abcdefgh" + "x" * 24 + ".apps.googleusercontent.com"
+    assert quota.credential_short(cid) == "abcdefgh…"
+    assert quota.credential_short("abcdefghijkl") == "abcdefgh…"
+    assert quota.credential_short("") == "(없음)" and quota.credential_short("?") == "(없음)"
+
+
+@pytest.mark.parametrize("label,short", [
+    ("youtube.api.v3.V3DataPlaylistItemService.List", "playlistItems.list"),
+    ("youtube.api.v3.V3DataVideoService.List", "videos.list"),
+    ("youtube.api.v3.V3DataChannelService.List", "channels.list"),
+    ("youtube.api.v3.V3DataLiveBroadcastService.List", "liveBroadcasts.list"),
+    ("youtube.api.v3.V3DataLiveStreamService.List", "liveStreams.list"),
+    ("youtube.api.v3.V3DataPlaylistService.List", "playlists.list"),
+    ("youtube.api.v3.Other.Thing", "Other.Thing"),
+])
+def test_method_short(label, short):
+    assert quota.method_short(label) == short
