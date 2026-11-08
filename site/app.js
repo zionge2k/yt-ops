@@ -124,14 +124,22 @@ const QUOTA_TONE = { ok: "blue", warn: "purple", bad: "red", out: "red", unknown
 const quotaTone = (p) => QUOTA_TONE[p.status] || "grey";
 const usageKnown = (p) => !isNull(p.used) && !p.error;
 
+// Worst tone wins the chip accent: red > purple > blue > grey.
+const TONE_RANK = { red: 3, purple: 2, blue: 1, grey: 0 };
+const worstTone = (projects) => projects.map(quotaTone).reduce((w, t) => (TONE_RANK[t] > TONE_RANK[w] ? t : w), "grey");
+
+/** One header chip showing every project's usage, one row per project. */
 function quotaChips() {
   const q = DATA.quota;
-  if (!q || !q.projects || !q.projects.length) return `<a class="chip s-grey" href="#api"><span>API 사용량 확인 불가</span><i style="width:0"></i></a>`;
-  return q.projects.map((p) => {
+  if (!q || !q.projects || !q.projects.length) return `<a class="qchip s-grey" href="#api"><span class="qt">API 사용량 · 확인 불가</span></a>`;
+  const rows = q.projects.map((p) => {
     const known = usageKnown(p);
     const w = known ? Math.min(100, p.pct || 0) : 0;
-    return `<a class="chip s-${quotaTone(p)}" href="#api"><span>${esc(p.label)} ${known ? `${fmt(p.pct)}%` : "확인 불가"}</span><i style="width:${w}%"></i></a>`;
+    const mark = p.status === "out" ? " ⛔" : p.status === "bad" ? " ⚠" : "";
+    const val = known ? `<b class="n">${fmt(p.pct)}%</b>${mark}` : `<span class="qx">확인 불가</span>`;
+    return `<div class="qr"><span class="ql">${esc(p.label)}</span><span class="qbar"><i class="s-${quotaTone(p)}" style="width:${w}%"></i></span><span class="qv">${val}</span></div>`;
   }).join("");
+  return `<a class="qchip s-${worstTone(q.projects)}" href="#api"><span class="qt">API 사용량</span>${rows}</a>`;
 }
 
 function hoursBars(hours) {
@@ -173,8 +181,9 @@ function renderApi() {
   const limit = (projects.find((p) => !isNull(p.limit)) || {}).limit || 10000;
   const size = Math.max(0, ...projects.map((p) => (p.channels || []).length));
   const intro = `<p class="apinote">한도는 Google 프로젝트(채널 ${fmt(size || 4)}개 묶음)마다 하루 ${fmt(limit)} 단위예요. 다 쓰면 그날 수집이 멈추고, 태평양 자정(한국 16~17시)에 0 으로 돌아가요.</p>`;
+  const asOf = q && q.as_of ? `<p class="qwhen n">${hm(q.as_of)} 기준 · 수집이 돌 때마다 새로 읽어요 (보통 2시간 간격)</p>` : "";
   if (!projects.length) return `${intro}<article class="card h-grey"><div class="fail">API 사용량을 확인하지 못했어요</div></article>`;
-  return `${intro}<div class="apigrid">${projects.map(quotaCard).join("")}</div>`;
+  return `${intro}${asOf}<div class="apigrid">${projects.map(quotaCard).join("")}</div>`;
 }
 
 // ---------- top ----------
