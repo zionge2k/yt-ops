@@ -558,3 +558,11 @@ def test_quota_block_defaults_to_null_and_is_passed_through(monkeypatch):
     monkeypatch.setattr(render, "fetch", lambda conn, sql, params=(): [])
     block = {"as_of": "x", "projects": []}
     assert render.build(None, today=TODAY, config=_cfg(), now=NOW, quota=block)["quota"] == block
+
+
+def test_budget_stage_fails_channel(monkeypatch):
+    log = [{"run_id": "r", "errors": [
+        {"channel": "a2p", "stage": "budget", "error": "ProjectBudgetExceeded"}]}]
+    d = _build(monkeypatch, yt_run_log=log)
+    flags = {c["key"]: c["collect_failed"] for c in d["channels"]}
+    assert flags["a2p"] is True and flags["soombi"] is False

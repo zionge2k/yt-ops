@@ -86,7 +86,7 @@ def _safe_fetch(conn, sql, params=(), *, problems: list[dict] | None = None):
 
 # Only stages feeding the card's own numbers fail the channel; errors of side tables
 # (playlists, audience, live snapshot) stay in the error list.
-FAILED_STAGES = ("client", "channel_daily", "subs", "store:yt_channel_daily", "store:yt_subs_snapshot")
+FAILED_STAGES = ("client", "budget", "channel_daily", "subs", "store:yt_channel_daily", "store:yt_subs_snapshot")
 
 
 def _failed(stage) -> bool:

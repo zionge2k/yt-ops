@@ -13,8 +13,9 @@ from ytops import store
 from ytops.analytics import for_key as analytics_for_key
 from ytops.collect import COLLECTORS, live, subs
 from ytops.collect.context import CollectContext
+from ytops.data import CallMeter, ProjectBudgetExceeded
 from ytops.data import for_key as data_for_key
-from ytops.registry import load_channels
+from ytops.registry import load_channels, load_projects
 
 PRIMARY_KEYS: dict[str, list[str]] = {
     "yt_channel_daily": ["channel_key", "day"],
@@ -139,6 +140,10 @@ def run_collect(
     today = today or datetime.now(ZoneInfo("Asia/Seoul")).date()
     start, end, video_start = today - timedelta(days=days), today - timedelta(days=1), today - timedelta(days=video_days)
     channels = load_channels()
+    # one meter per GCP project: its channels share one daily Data API quota
+    projects = load_projects()
+    meters = {p.id: CallMeter(label=p.label) for p in projects}
+    meter_of = {k: meters[p.id] for p in projects for k in p.channels}
     result = RunResult(uuid.uuid4().hex, started_at, None)
     # a run of the live collector alone only matters for channels that broadcast: skip building
     # (and refreshing the credentials of) the other channels' clients
@@ -149,10 +154,15 @@ def run_collect(
 
     for key in keys:
         collected: dict[str, list[dict]] = {}
+        meter = meter_of.get(key)
+        if meter is not None and meter.exhausted:  # spare this channel's credentials and quota
+            result.errors.append(_error(key, "budget", ProjectBudgetExceeded(
+                f"Data API project budget ({meter.limit}) spent in this run ({meter.label})")))
+            continue
         try:
             ctx = CollectContext(
                 key=key, channel=channels[key], analytics=analytics_for_key(key),
-                data=data_for_key(key), today=today, collected_at=datetime.now(timezone.utc),
+                data=data_for_key(key, meter=meter), today=today, collected_at=datetime.now(timezone.utc),
             )
         except Exception as e:  # auth / registry failure: skip this channel only
             result.errors.append(_error(key, "client", e))
