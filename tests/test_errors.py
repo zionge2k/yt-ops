@@ -60,3 +60,8 @@ def test_render_stage_error_names_the_table():
     e = {"channel": None, "stage": "render", "error": "UndefinedTable", "table": "yt_audience"}
     assert human_error(e, NOW) == "화면 만들 때 yt_audience 를 읽지 못했어요 (UndefinedTable)"
     assert "표" in human_error({"stage": "render", "error": "X"}, NOW)
+
+
+def test_project_budget_exceeded_text():
+    err = {"error": "ProjectBudgetExceeded", "stage": "budget"}
+    assert human_error(err, NOW) == "프로젝트 호출 예산 초과 · 같은 프로젝트의 다른 채널을 지키려고 중단"

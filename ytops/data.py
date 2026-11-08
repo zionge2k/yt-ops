@@ -10,11 +10,36 @@ BATCH = 50
 # 2026-11-07 incident: one playlist paged forever (same nextPageToken again and again) and
 # burned the day's Data API quota in ten minutes. Two guards, both per client (= per channel per run):
 MAX_PAGES = 100        # a list longer than 5,000 items is a bug, not a channel
-CALL_BUDGET = 600      # quota units a normal run never approaches (uploads ~40, playlists ~60)
+CALL_BUDGET = 300      # per client; a normal daily run is ~100 calls per channel (measured 2026-11-08)
+# One GCP project = one 10,000/day quota shared by its channels; this caps one run at 10 %.
+PROJECT_BUDGET = 1000
 
 
 class CallBudgetExceeded(RuntimeError):
     """Raised when one client has made more Data API calls than a sane run needs."""
+
+
+class ProjectBudgetExceeded(RuntimeError):
+    """Raised when the channels of one GCP project together made more Data API calls than a sane run needs."""
+
+
+class CallMeter:
+    """Counts Data API calls across every client of one GCP project within a run."""
+
+    def __init__(self, limit: int = PROJECT_BUDGET, label: str = ""):
+        self.calls = 0
+        self.limit = limit
+        self.label = label
+
+    @property
+    def exhausted(self) -> bool:
+        return self.calls >= self.limit
+
+    def spend(self) -> None:
+        if self.exhausted:
+            raise ProjectBudgetExceeded(
+                f"Data API project budget ({self.limit}) spent in this run ({self.label})")
+        self.calls += 1
 
 
 class PagingAborted(RuntimeError):
@@ -23,15 +48,18 @@ class PagingAborted(RuntimeError):
 
 class DataClient:
     def __init__(self, service, sleep: Callable[[float], None] = time.sleep,
-                 call_budget: int = CALL_BUDGET):
+                 call_budget: int = CALL_BUDGET, meter: CallMeter | None = None):
         self._service = service
         self._sleep = sleep
         self.calls = 0
         self._budget = call_budget
+        self._meter = meter
 
     def _run(self, request):
         if self.calls >= self._budget:
             raise CallBudgetExceeded(f"Data API call budget ({self._budget}) spent in this run")
+        if self._meter:
+            self._meter.spend()
         self.calls += 1
         return execute(request, self._sleep)
 
@@ -137,11 +165,11 @@ class DataClient:
         return items[0].get("status", {}) if items else {}
 
 
-def for_key(key: str) -> DataClient:
+def for_key(key: str, meter: CallMeter | None = None) -> DataClient:
     from googleapiclient.discovery import build
 
     from ytops.auth import credentials
     from ytops.registry import resolve_key
 
     creds = credentials(resolve_key(key))
-    return DataClient(build("youtube", "v3", credentials=creds, cache_discovery=False))
+    return DataClient(build("youtube", "v3", credentials=creds, cache_discovery=False), meter=meter)

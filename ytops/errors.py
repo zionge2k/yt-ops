@@ -41,6 +41,8 @@ def human_error(err: dict, now: datetime) -> str:
         return "목록이 끝나지 않아 중단 (기존 데이터 유지)"
     if name == "CallBudgetExceeded":
         return "호출 예산 초과로 중단"
+    if name == "ProjectBudgetExceeded":
+        return "프로젝트 호출 예산 초과 · 같은 프로젝트의 다른 채널을 지키려고 중단"
     if status is not None:
         return f"API 오류 {status}" + (f" ({reason})" if reason else "")
     return f"{name or '오류'}" + (f": {message[:60]}" if message else "")

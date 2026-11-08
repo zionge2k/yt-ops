@@ -172,3 +172,50 @@ def test_call_budget_raises():
     with pytest.raises(CallBudgetExceeded):
         c.channel_stats()
     assert c.calls == 3
+
+
+def test_project_meter_shared_across_clients():
+    import pytest
+    from ytops.data import CallMeter, ProjectBudgetExceeded
+    meter = CallMeter(limit=5, label="p")
+    a = DataClient(FakeService(channels__list=[CHANNEL] * 10), sleep=lambda s: None, meter=meter)
+    b = DataClient(FakeService(channels__list=[CHANNEL] * 10), sleep=lambda s: None, meter=meter)
+    for _ in range(3):
+        a.channel_stats()
+    for _ in range(2):
+        b.channel_stats()
+    assert meter.calls == 5
+    with pytest.raises(ProjectBudgetExceeded):
+        a.channel_stats()
+    with pytest.raises(ProjectBudgetExceeded):
+        b.channel_stats()
+    assert meter.calls == 5  # rejected calls are not counted
+
+
+def test_client_without_meter_unaffected():
+    c = DataClient(FakeService(channels__list=[CHANNEL] * 10), sleep=lambda s: None)
+    for _ in range(10):
+        c.channel_stats()
+    assert c.calls == 10
+
+
+def test_meter_exhausted_flips_at_limit():
+    from ytops.data import CallMeter
+    m = CallMeter(limit=2)
+    assert not m.exhausted
+    m.spend()
+    assert not m.exhausted
+    m.spend()
+    assert m.exhausted
+
+
+def test_client_budget_checked_before_meter():
+    import pytest
+    from ytops.data import CallBudgetExceeded, CallMeter
+    meter = CallMeter(limit=10)
+    c = DataClient(FakeService(channels__list=[CHANNEL] * 5), sleep=lambda s: None,
+                   call_budget=1, meter=meter)
+    c.channel_stats()
+    with pytest.raises(CallBudgetExceeded):
+        c.channel_stats()
+    assert meter.calls == 1
