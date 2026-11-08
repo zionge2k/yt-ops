@@ -122,3 +122,8 @@
 - 권한: 키 없는 WIF. 서비스 계정 `yt-ops-monitor@nowbrd-release`(monitoring.viewer 두 프로젝트), 풀/제공자 `projects/240395376214/locations/global/workloadIdentityPools/github/providers/github`, 조건 `assertion.repository=='zionge2k/yt-ops'`. 열쇠 이름표(`[credentials]`): 숨비네 `v63007rf`=yt-ops 열쇠(찰나 공용) · `6sl59ntt`=숨비 PC 앱, 형아네 `11hllqpn`=yt-ops 열쇠 · `rsgoo1ju`=다른 앱.
 - Ruling(형아 11/08 14:10): **결제 연결은 안 한다.** Monitoring 은 결제 없는 프로젝트의 서비스 계정 호출을 거절(403 "requires billing")하므로 WIF·서비스 계정은 지우고, Mac 의 gcloud 와 같은 **사용자 자격증명**을 쓴다: 읽기 전용 계정 zion.geek.py(두 프로젝트 monitoring.viewer 만)의 gcloud 로그인 파일을 Actions 비밀값 `GCP_MONITOR_ADC` 로. 러너 임시 폴더에 풀고 읽은 뒤 삭제. 새면 `gcloud auth revoke zion.geek.py@gmail.com` 으로 끊고 비밀값 교체.
 - 칩은 하나(API 사용량 · 두 프로젝트 두 줄). 새로고침 때 즉시 재조회는 정적 페이지라 불가 — 필요해지면 Cloudflare Worker 로 "지금 새로고침" 버튼(형아 판단 보류).
+
+## 2026-11-08 오후 — 건강 검진(opus) 뒤
+
+- 판정 4/5. 손볼 3곳은 바로 고침(배포 전 테스트 관문 · `_safe_fetch` 가 오류를 삼키던 것 · WIF 문구). 작은 것 넷은 보류: 저장소 전체 "일일 실패" 띠가 채널 하나 때문에 켜짐 · 일회성 cron 매년 반복(17:30 뒤 삭제) · daily/live 70줄 중복 · "정확 구독자" 시간대 오차(추정).
+- Ruling: **스키마 자동 적용(daily)은 유지.** 1인 운영에서 손으로 적용하는 쪽이 더 자주 빠뜨림. 대신 테스트가 먼저 돌고, `schema --apply` 안내문을 "push 전 로컬 검토" 로 바꿈. 리뷰어 지적(공개 저장소의 Gmail 계정 이름·프로젝트 번호)은 형아 판단 대기.
