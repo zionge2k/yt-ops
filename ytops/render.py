@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from ytops import periods, store
+from ytops.errors import human_error
 
 fetch = store.fetch  # single injectable DB read; tests monkeypatch it
 
@@ -397,7 +398,7 @@ def build(conn, *, today: date, config, now: datetime | None = None) -> dict:
     errors: list[dict] = []
     for k in keys:
         ch = channels[k]
-        ch_errors = _channel_errors(runs, k)
+        ch_errors = [{**e, "human": human_error(e, now)} for e in _channel_errors(runs, k)]
         errors += ch_errors
         failed = any(_failed(e.get("stage")) for e in ch_errors)
         out_channels.append({"key": k, "display": ch.display, "is_live": ch.is_live,

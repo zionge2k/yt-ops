@@ -159,7 +159,7 @@ function renderBoard() {
     const head = `<div class="namerow"><h2>${esc(ch.display)}</h2><a class="more" href="#ch/${esc(key)}">심화 ›</a></div>`;
     if (ch.collect_failed) {
       const e = ch.errors && ch.errors[0];
-      return `<article class="card h-grey">${head}<div class="fail n">${e ? esc(e.error) : "—"}</div></article>`;
+      return `<article class="card h-grey">${head}<div class="fail n">${e ? esc(e.human || e.error) : "—"}</div></article>`;
     }
     const h = b.h48 || {};
     return `<article class="card h-${esc(b.health || "grey")}">${head}
@@ -260,7 +260,7 @@ function renderBands() {
 
 function renderErrors() {
   if (!DATA.errors || !DATA.errors.length) return "";
-  const items = DATA.errors.map((e) => `<li>${esc(nameOf(e.channel))} · ${esc(e.stage || "")} ${esc(e.error || "")}${e.run_started_at ? ` <span class="n">${esc(mdhm(e.run_started_at))}</span>` : ""}</li>`).join("");
+  const items = DATA.errors.map((e) => `<li>${esc(nameOf(e.channel))} · ${esc(e.stage || "")} ${esc(e.human || e.error || "")}${e.run_started_at ? ` <span class="n">${esc(mdhm(e.run_started_at))}</span>` : ""}</li>`).join("");
   return `<section class="errs"><h3>오류</h3><ul class="errors">${items}</ul></section>`;
 }
 

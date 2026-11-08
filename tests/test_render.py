@@ -145,7 +145,7 @@ def test_v3_top_level_shape(monkeypatch):
     assert set(d["channels"][0]) == {"key", "display", "is_live", "collect_failed", "errors"}
     for section in ("board", "subs_trend", "watch_trend", "detail"):
         assert list(d[section]) == d["order"], section
-    assert d["errors"] == [{"channel": "pliwav", "stage": "x", "run_started_at": None}]
+    assert d["errors"] == [{"channel": "pliwav", "stage": "x", "run_started_at": None, "human": "오류"}]
 
 
 def test_board_h48_and_subscribers(monkeypatch):
@@ -335,7 +335,8 @@ def test_collect_failed_uses_last_run_covering_channel(monkeypatch):
     flags = {c["key"]: c["collect_failed"] for c in d["channels"]}
     assert flags["a2p"] is True and flags["soombi"] is False
     assert d["errors"] == [{"channel": "a2p", "stage": "client", "error": "TokenExpired",
-                            "message": "m", "run_started_at": t1.isoformat()}]
+                            "message": "m", "run_started_at": t1.isoformat(),
+                                "human": "TokenExpired: m"}]
 
 
 def test_run_without_channels_value_covers_every_channel(monkeypatch):
@@ -517,3 +518,13 @@ def test_live_subset_runs_count_as_live_runs_but_not_daily_runs(monkeypatch):
     assert {c["key"]: c["collect_failed"] for c in d["channels"]}["soombi"] is True
     assert d["last_daily_ok_at"] is None
     assert d["board"]["soombi"]["live"]["on"] is False  # the mixed run ran live without error
+
+
+def test_errors_carry_human_text(monkeypatch):
+    log = [{"run_id": "r", "errors": [
+        {"channel": "pliwav", "stage": "channel_daily", "error": "HttpError", "status": 403, "reason": "quotaExceeded"}]}]
+    d = _build(monkeypatch, yt_run_log=log)
+    want = "API 하루 한도 소진 · 17:00 에 다시 열림"  # NOW is 2026-11-07 01:10Z, before the 08:00Z reset
+    assert [e["human"] for e in d["errors"]] == [want]
+    pli = next(c for c in d["channels"] if c["key"] == "pliwav")
+    assert [e["human"] for e in pli["errors"]] == [want]
