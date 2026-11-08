@@ -382,9 +382,9 @@ async function startRefresh() {
     setRefresh(`방금 새로고침했어요 · ${Math.ceil(secs / 60)}분 뒤 다시`, true);
     releaseRefreshAfter(secs * 1000);
   } else if (res && res.status === 401) {
-    setRefresh("비밀번호가 달라요 · 다시 로그인", true);
-    store("del", STORE_KEY);
-    setTimeout(() => location.reload(), 1500);
+    // The stored password already decrypted data.enc, so a 401 means the server's copy is wrong — keep ours.
+    setRefresh("서버 비밀번호가 달라요 · 형아에게 알려 주세요", true);
+    releaseRefreshAfter(30000);
   } else {
     setRefresh("지금은 안 돼요 · 잠시 뒤 다시", true);
     releaseRefreshAfter(30000);
