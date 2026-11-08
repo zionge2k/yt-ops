@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -159,6 +160,14 @@ def cmd_quota(args) -> int:
             info = quota.collect_project(mon, project, now)
         except Exception as e:  # one unreadable project must not hide the others
             msg = str(e) if isinstance(e, quota.QuotaAccessError) else f"권한 또는 네트워크 문제예요 ({type(e).__name__})"
+            # Always leave the real cause in the log (Actions runs with --out, so stdout JSON alone would hide it).
+            body = ""
+            if hasattr(e, "read"):  # urllib HTTPError carries the API's JSON explanation in its body
+                try:
+                    body = " " + e.read()[:300].decode("utf-8", "replace")
+                except Exception:
+                    body = ""
+            print(f"[quota] {project.id}: {type(e).__name__}: {str(e)[:300]}{body}", file=sys.stderr)
             texts.append(f"{project.label} ({project.id})\n  읽지 못했어요: {msg}")
             infos.append(quota.failed_info(project, now, msg))
             continue
