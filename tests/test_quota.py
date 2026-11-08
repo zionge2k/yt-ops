@@ -207,3 +207,54 @@ def test_credential_short():
 ])
 def test_method_short(label, short):
     assert quota.method_short(label) == short
+
+
+class _FakeCreds:
+    token = None
+
+    def refresh(self, request):
+        self.token = "adc-tok"
+
+
+def _reset_tokens():
+    quota._TOKEN_CACHE.clear()
+    quota._ADC_TOKEN.clear()
+
+
+def test_token_for_prefers_adc_and_skips_gcloud(monkeypatch):
+    _reset_tokens()
+    monkeypatch.setattr(quota.google.auth, "default", lambda scopes=None: (_FakeCreds(), "p"))
+    monkeypatch.setattr(quota, "gcloud_token_for", lambda *a, **k: pytest.fail("gcloud must not be called"))
+    assert quota.token_for("p1", None) == "adc-tok"
+    assert quota.token_for("p2", None) == "adc-tok"  # one cached token for every project
+
+
+def test_adc_asks_for_monitoring_read_scope(monkeypatch):
+    _reset_tokens()
+    seen = {}
+    monkeypatch.setattr(quota.google.auth, "default", lambda scopes=None: seen.update(scopes=scopes) or (_FakeCreds(), "p"))
+    quota.adc_token()
+    assert seen["scopes"] == ["https://www.googleapis.com/auth/monitoring.read"]
+
+
+def test_token_for_falls_back_to_gcloud_without_adc(monkeypatch):
+    _reset_tokens()
+
+    def no_adc(scopes=None):
+        raise quota.google.auth.exceptions.DefaultCredentialsError("none")
+
+    monkeypatch.setattr(quota.google.auth, "default", no_adc)
+    monkeypatch.setattr(quota, "gcloud_token_for", lambda project, accounts: f"gcloud-{project}-{accounts}")
+    assert quota.token_for("p1", ["a@x.com"]) == "gcloud-p1-['a@x.com']"
+
+
+def test_token_for_falls_back_when_refresh_fails(monkeypatch):
+    _reset_tokens()
+
+    class Bad(_FakeCreds):
+        def refresh(self, request):
+            raise quota.google.auth.exceptions.RefreshError("denied")
+
+    monkeypatch.setattr(quota.google.auth, "default", lambda scopes=None: (Bad(), "p"))
+    monkeypatch.setattr(quota, "gcloud_token_for", lambda project, accounts: "g")
+    assert quota.token_for("p1", None) == "g"

@@ -151,6 +151,7 @@ def main(argv: list[str] | None = None) -> int:
     qt.add_argument("--project", help="GCP project id from channels.toml [projects]")
     qt.add_argument("--account", help="gcloud account to read with (default: try every logged-in account)")
     qt.add_argument("--json", action="store_true", help="print the collected numbers as JSON")
+    qt.add_argument("--out", help="with --json: write the JSON to this file instead of stdout")
     m = sub.add_parser("manual")
     ms = m.add_subparsers(dest="action", required=True)
     mset = ms.add_parser("set")

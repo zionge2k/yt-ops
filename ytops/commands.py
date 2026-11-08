@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from ytops import quota, registry, reports, store
@@ -150,20 +151,28 @@ def cmd_quota(args) -> int:
             print(f"{args.project} 은 channels.toml 의 [projects] 에 없어요.")
             return 2
     accounts = [args.account] if args.account else None
-    mon = quota.Monitoring(lambda pid: quota.gcloud_token_for(pid, accounts))
+    mon = quota.Monitoring(lambda pid: quota.token_for(pid, accounts))
     now = datetime.now(timezone.utc)
-    infos, texts = [], []
+    infos, texts, read = [], [], 0
     for project in projects:
         try:
             info = quota.collect_project(mon, project, now)
         except Exception as e:  # one unreadable project must not hide the others
-            msg = str(e) if isinstance(e, quota.QuotaAccessError) else f"{type(e).__name__}"
+            msg = str(e) if isinstance(e, quota.QuotaAccessError) else f"권한 또는 네트워크 문제예요 ({type(e).__name__})"
             texts.append(f"{project.label} ({project.id})\n  읽지 못했어요: {msg}")
+            infos.append(quota.failed_info(project, now, msg))
             continue
+        read += 1
         infos.append(info)
         texts.append(quota.report_from(info))
     if args.json:
-        print(json.dumps(infos, ensure_ascii=False, indent=1))
+        payload = json.dumps(infos, ensure_ascii=False, indent=1)
+        if args.out:
+            out = Path(args.out)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(payload, encoding="utf-8")
+        else:
+            print(payload)
     else:
         print("\n\n".join(texts))
-    return 0 if infos else 1
+    return 0 if read else 1

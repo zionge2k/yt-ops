@@ -130,3 +130,33 @@ def test_quota_continues_after_failure_and_fails_only_if_all_fail(monkeypatch, c
 
     monkeypatch.setattr(cli.commands.quota, "collect_project", all_fail)
     assert cli.main(["quota"]) == 1
+
+
+def test_quota_out_writes_file_and_keeps_failed_projects(monkeypatch, capsys, tmp_path):
+    import json
+
+    def collect(mon, p, now):
+        if p.id == "nowbrd-release":
+            raise cli.commands.quota.QuotaAccessError("nowbrd-release: 읽을 수 있는 계정이 없어요.")
+        return _info(p.id)
+
+    monkeypatch.setattr(cli.commands.quota, "collect_project", collect)
+    out = tmp_path / "sub" / "quota.json"
+    assert cli.main(["quota", "--json", "--out", str(out)]) == 0
+    assert capsys.readouterr().out == ""
+    rows = json.loads(out.read_text(encoding="utf-8"))
+    assert [r["project"] for r in rows] == ["shorts-factory-492813", "nowbrd-release"]
+    assert rows[0]["used"] == 10
+    assert rows[1]["used"] is None and "읽을 수 있는 계정이 없어요" in rows[1]["error"]
+
+
+def test_quota_out_exit_1_when_nothing_read_but_file_still_written(monkeypatch, tmp_path):
+    import json
+
+    def fail(mon, p, now):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(cli.commands.quota, "collect_project", fail)
+    out = tmp_path / "q.json"
+    assert cli.main(["quota", "--json", "--out", str(out)]) == 1
+    assert all(r["used"] is None and r["error"] for r in json.loads(out.read_text(encoding="utf-8")))

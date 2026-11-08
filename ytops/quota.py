@@ -11,6 +11,10 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from urllib.parse import urlencode
 
+import google.auth
+import google.auth.exceptions
+import google.auth.transport.requests
+
 from ytops.errors import KST, last_quota_reset, next_quota_reset
 from ytops.registry import Project
 
@@ -25,6 +29,7 @@ LIMIT_TYPE = "serviceruntime.googleapis.com/quota/limit"
 REQUEST_TYPE = "serviceruntime.googleapis.com/api/request_count"
 BASE = "https://monitoring.googleapis.com/v3/projects"
 RFC3339 = "%Y-%m-%dT%H:%M:%SZ"
+MONITORING_SCOPE = "https://www.googleapis.com/auth/monitoring.read"
 
 
 class QuotaAccessError(RuntimeError):
@@ -197,6 +202,32 @@ def gcloud_token_for(project: str, accounts: list[str] | None, run=_run, probe=_
     raise QuotaAccessError(f"{project}: 읽을 수 있는 계정이 없어요. 시도한 계정: {names}")
 
 
+_ADC_TOKEN: list[str] = []
+
+
+def adc_token() -> str | None:
+    """Access token from Application Default Credentials (Workload Identity Federation on Actions), or None.
+
+    One token serves every project (the service account has monitoring.viewer on all of them), so it is cached.
+    """
+    if _ADC_TOKEN:
+        return _ADC_TOKEN[0]
+    try:
+        creds, _ = google.auth.default(scopes=[MONITORING_SCOPE])
+        creds.refresh(google.auth.transport.requests.Request())
+    except google.auth.exceptions.GoogleAuthError:
+        return None
+    if not creds.token:
+        return None
+    _ADC_TOKEN.append(creds.token)
+    return creds.token
+
+
+def token_for(project: str, accounts: list[str] | None) -> str:
+    """ADC first (keyless, used on Actions), the logged-in gcloud accounts second (a developer's Mac)."""
+    return adc_token() or gcloud_token_for(project, accounts)
+
+
 # ---------- collection ----------
 
 def _flt(metric_type: str, service: str, extra: str = "") -> str:
@@ -234,7 +265,16 @@ def collect_project(mon, project: Project, now: datetime) -> dict:
         "top_methods": sorted(by_method.items(), key=lambda kv: -kv[1])[:TOP_METHODS],
         "analytics_used": analytics,
         "reset_at": next_quota_reset(now).isoformat(), "as_of": now.astimezone(KST).isoformat(),
+        "error": None,
     }
+
+
+def failed_info(project: Project, now: datetime, message: str) -> dict:
+    """Placeholder entry for a project whose usage could not be read (keeps every project in the JSON)."""
+    return {"project": project.id, "label": project.label, "channels": project.channels, "used": None,
+            "limit": None, "hours": {}, "by_credential": {}, "top_methods": [], "analytics_used": None,
+            "reset_at": next_quota_reset(now).isoformat(), "as_of": now.astimezone(KST).isoformat(),
+            "error": message}
 
 
 def report_from(info: dict) -> str:
