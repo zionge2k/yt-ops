@@ -17,6 +17,7 @@ GitHub Actions(매일 KST 09:30) → 수집 → Supabase(Postgres) → 암호화
 설계와 작업 계획은 `.claude/plans/2026-11-07-yt-ops-dashboard/`.
 
     python -m ytops --help
+    python -m ytops quota   # Mac 전용(gcloud 로그인 필요): 프로젝트별 오늘 Data API 사용 단위
 
 ## 테스트
 
