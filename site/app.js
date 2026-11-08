@@ -386,7 +386,9 @@ async function startRefresh() {
     setRefresh("서버 비밀번호가 달라요 · 형아에게 알려 주세요", true);
     releaseRefreshAfter(30000);
   } else {
-    setRefresh("지금은 안 돼요 · 잠시 뒤 다시", true);
+    // Show the server's error key so a failure can be diagnosed from the button text alone.
+    const why = info.error ? ` (${info.error}${info.status ? " " + info.status : ""})` : res ? ` (${res.status})` : " (연결 안 됨)";
+    setRefresh(`지금은 안 돼요 · 잠시 뒤 다시${why}`, true);
     releaseRefreshAfter(30000);
   }
 }
