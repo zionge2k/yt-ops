@@ -1,6 +1,6 @@
 import pytest
 
-from ytops.registry import KEYS, load_channels, resolve_key
+from ytops.registry import KEYS, load_channels, load_projects, resolve_key
 
 
 def test_resolve_alias():
@@ -55,3 +55,24 @@ def test_load_channels_merges_channel_id(tmp_path, monkeypatch):
     ch = load_channels(cfg)
     assert ch["soombi"].channel_id == "UCfake1"
     assert ch["pliwav"].channel_id is None
+
+
+def test_load_projects(tmp_path):
+    cfg = tmp_path / "channels.toml"
+    cfg.write_text(
+        '[channels.soombi]\ndisplay = "A"\n'
+        '[projects.p1]\nlabel = "하나"\nchannels = ["soombi", "a2p"]\n'
+        '[projects.p2]\nlabel = "둘"\nchannels = ["pliwav"]\n',
+        encoding="utf-8",
+    )
+    projects = load_projects(cfg)
+    assert [(p.id, p.label, p.channels) for p in projects] == [
+        ("p1", "하나", ["soombi", "a2p"]), ("p2", "둘", ["pliwav"])]
+    assert list(load_channels(cfg)) == ["soombi"]  # the new table does not leak into channels
+
+
+def test_repo_projects_cover_all_channels_once():
+    projects = load_projects()
+    assert len(projects) == 2
+    chans = [c for p in projects for c in p.channels]
+    assert len(chans) == 8 and sorted(chans) == sorted(KEYS)

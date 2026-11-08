@@ -28,6 +28,13 @@ class Channel:
     pc_name: str
 
 
+@dataclass(frozen=True)
+class Project:
+    id: str
+    label: str
+    channels: list[str]
+
+
 def resolve_key(name: str) -> str:
     key = ALIAS.get(name, name)
     if key not in KEYS:
@@ -73,3 +80,11 @@ def load_thresholds(config_path: Path | None = None) -> dict:
         "down_pct": float(t.get("down_pct", -5.0)),
         "shortage_days": int(t.get("shortage_days", 3)),
     }
+
+
+def load_projects(config_path: Path | None = None) -> list[Project]:
+    """GCP projects (the Data API daily quota is per project) and the channels they serve."""
+    with (config_path or DEFAULT_CONFIG).open("rb") as f:
+        rows = tomllib.load(f).get("projects", {})
+    return [Project(id=pid, label=row.get("label", pid), channels=list(row.get("channels", [])))
+            for pid, row in rows.items()]

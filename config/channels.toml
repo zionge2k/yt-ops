@@ -51,3 +51,12 @@ plan_shorts_per_day = 0
 up_pct = 5.0
 down_pct = -5.0
 shortage_days = 3
+
+# GCP projects: the Data API daily quota (10,000 units) is per project. Used by `ytops quota`.
+[projects.shorts-factory-492813]
+label = "숨비네"
+channels = ["soombi", "backthen", "a2p", "urachacha"]
+
+[projects.nowbrd-release]
+label = "형아네"
+channels = ["justsoombi", "soombicafe", "pliwav", "groovewav"]
