@@ -66,10 +66,24 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: python -m ytops collect --all --only live | tee "$RUNNER_TEMP/collect.log"
 
+      # Monitoring 읽기 전용 · 키 없음(Workload Identity Federation). 실패해도 수집·배포는 계속.
+      - name: Google 인증 (사용량 읽기)
+        id: gauth
+        continue-on-error: true
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/240395376214/locations/global/workloadIdentityPools/github/providers/github
+          service_account: yt-ops-monitor@nowbrd-release.iam.gserviceaccount.com
+
+      - name: API 사용량 읽기
+        if: steps.gauth.outcome == 'success'
+        continue-on-error: true
+        run: python -m ytops quota --json --out "$RUNNER_TEMP/quota.json"
+
       - name: 화면 데이터 만들기
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-        run: python -m ytops render --out "$RUNNER_TEMP/data.json"
+        run: python -m ytops render --out "$RUNNER_TEMP/data.json" --quota "$RUNNER_TEMP/quota.json"
 
       - name: 암호화
         env:
