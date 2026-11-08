@@ -111,3 +111,10 @@
 - Ruling: 페이지 상한(MAX_PAGES)에 닿으면 PagingAborted 예외. 재생목록 수가 itemCount 의 90% 미만이면 오류로 끝내 replace 가 좋은 행을 지우지 않음. replace_channel 은 트랜잭션.
 - Ruling: 스키마 적용은 daily 에서만. 11/08 01:40 push 직후 Mac 에서 `schema --apply` 수동 실행(옛 live 행 8개 백필 확인).
 - 보류(minor): N5 daily·live 동시 Pages 배포 가능성(배포 job 분리) · L6 구독자 복원선 3일 어긋남 · L8 프로젝트 단위 호출 상한 · L2 일회성 cron(`30 8 8 11 *`) 은 11/08 17:30 실행 뒤 지울 것.
+
+## 2026-11-08 낮 — API 사용량을 어떻게 보일까
+
+- 형아 제안: 상황판에 Claude 앱식 사용량 동그라미(숨비가 알아야 한다). 꼬비 의견: 방향은 맞고 모양은 반쯤 과함 — 한도를 쓰는 건 숨비가 아니라 봇이라 숫자를 보고 할 행동이 없고, 평소 3~4% 라 한 달이면 벽지가 됨. 숨비에게 필요한 건 "오늘 데이터 믿어도 돼?" 와 "안 되면 왜 · 언제 돌아와?".
+- Ruling(형아 11/08): **1) 오류 문구를 사람 말로**("API 하루 한도 소진 · 17:00 에 다시 열림") **+ GCP 한도 알림 메일**(80% · 소진, 두 프로젝트) 지금. **2) `ytops quota` CLI**(꼬비 조사용) 바로 이어서. **3) 상황판 게이지는 한 달 뒤** 숨비가 숫자를 원하면 — 넣는다면 늘 보이는 동그라미가 아니라 50% 넘을 때만 켜지는 조용한 칩으로. 넣으려면 Actions 가 Monitoring 을 읽어야 하므로 Workload Identity Federation(키 없음) 권장. — 틀리면: 숨비가 숫자를 좋아하는 사람이면 게이지를 당긴다.
+- 알림(Monitoring REST 로 생성, gcloud alpha/beta 컴포넌트 없이): 각 프로젝트에 이메일 채널(zion.geek.py) + 정책 둘 — `quota/exceeded`(limit_name=defaultPerDayPerProject) > 0 · `quota/rate/net_usage` 24h 합 > 8,000. 24h 합은 리셋 창(태평양 자정)과 어긋나 전날 저녁 + 당일 사용이 겹치면 80% 가 일찍 울 수 있음(소진 알림은 정확). 숨비 메일은 주소를 받으면 추가. 스크립트는 세션 임시 폴더 `make_alerts.py`.
+- 시험: 11/08 15:00 live 실행이 shorts-factory 403 → 소진 알림 첫 실전.

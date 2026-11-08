@@ -34,3 +34,8 @@
 ## 2026-11-07 밤 — 재생목록 페이지 무한 반복으로 Data API 하루 한도 소진
 - 22:14 KST 꼬비(숨비 PC)가 Actions 에 건 `daily backfill_days=365` 가 새 `playlists` 수집기에서 **playlistItems.list 8,684회/10분**(같은 nextPageToken 이 계속 돌아옴) → shorts-factory 통장 10,000 소진 → 찰나·백댄·모로우·A2P 의 subs·video·live 수집 403.
 - 고침: `DataClient._pages` 가 같은 토큰 반복 · MAX_PAGES(100) 에서 멈춤 · 클라이언트당 CALL_BUDGET(600) 넘으면 예외. `uploads()` 도 같은 길. 새 수집기는 **먼저 dry-run 으로 호출 수를 센 뒤** Actions 에 건다.
+
+## 2026-11-08 — Monitoring 으로 한도 알림 걸기
+- YouTube 하루 한도 소진은 `serviceruntime.googleapis.com/quota/exceeded`(resource `consumer_quota`, `metric.label.limit_name="defaultPerDayPerProject"`, `quota_metric="youtube.googleapis.com/default"`) 에 BOOL 로 찍힌다. 11/07 사고가 시간당 수십 점으로 남아 있었다. 사용량은 `quota/rate/net_usage`(DELTA) 합, 한도는 `quota/limit`(10,000 / 분당 1,800,000 / 사용자 분당 180,000).
+- 알림 정책은 `alertPolicies` REST 로 만들면 gcloud alpha/beta 컴포넌트가 필요 없다. 필터 안에서는 `resource.label.x` · `metric.label.x`(단수), 시계열 조회 groupBy 에서는 `resource.labels.x`(복수) — 둘이 다르다. alignmentPeriod 86400s 도 정책에서 받아들여졌다.
+- `documentation.subject` 를 주면 메일 제목이 그 글이 된다. 숨비가 받을 메일은 제목에 한국어로 무슨 일인지 적는다.
