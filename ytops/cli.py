@@ -147,6 +147,10 @@ def main(argv: list[str] | None = None) -> int:
     q.add_argument("--start")
     q.add_argument("--end")
     q.add_argument("--max", type=int, default=25)
+    qt = sub.add_parser("quota", help="today's YouTube Data API units per GCP project (needs gcloud login)")
+    qt.add_argument("--project", help="GCP project id from channels.toml [projects]")
+    qt.add_argument("--account", help="gcloud account to read with (default: try every logged-in account)")
+    qt.add_argument("--json", action="store_true", help="print the collected numbers as JSON")
     m = sub.add_parser("manual")
     ms = m.add_subparsers(dest="action", required=True)
     mset = ms.add_parser("set")
@@ -166,7 +170,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "render":
         return _render(args)
     handler = {"live": commands.cmd_live, "shorts": commands.cmd_shorts, "schedule": commands.cmd_schedule,
-               "query": commands.cmd_query, "manual": commands.cmd_manual}.get(args.cmd)
+               "query": commands.cmd_query, "quota": commands.cmd_quota, "manual": commands.cmd_manual}.get(args.cmd)
     if handler:
         return handler(args)
     if args.cmd == "encrypt":

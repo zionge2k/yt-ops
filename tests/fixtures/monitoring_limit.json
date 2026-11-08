@@ -1,0 +1,38 @@
+{
+ "timeSeries": [
+  {
+   "metric": {
+    "type": "serviceruntime.googleapis.com/quota/limit",
+    "labels": {}
+   },
+   "resource": {
+    "type": "consumer_quota",
+    "labels": {
+     "service": "youtube.googleapis.com"
+    }
+   },
+   "metricKind": "GAUGE",
+   "valueType": "INT64",
+   "points": [
+    {
+     "interval": {
+      "startTime": "2026-11-08T05:00:00Z",
+      "endTime": "2026-11-08T05:00:00Z"
+     },
+     "value": {
+      "int64Value": "10000"
+     }
+    },
+    {
+     "interval": {
+      "startTime": "2026-11-08T00:00:00Z",
+      "endTime": "2026-11-08T00:00:00Z"
+     },
+     "value": {
+      "int64Value": "10000"
+     }
+    }
+   ]
+  }
+ ]
+}

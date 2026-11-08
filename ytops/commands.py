@@ -1,10 +1,11 @@
-"""On-demand drill-down commands (live, shorts, schedule, query, manual)."""
+"""On-demand drill-down commands (live, shorts, schedule, query, manual, quota)."""
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from ytops import registry, reports, store
+from ytops import quota, registry, reports, store
 from ytops.analytics import for_key as analytics_for_key
 from ytops.collect import live as live_collector
 from ytops.collect import schedule as schedule_collector
@@ -138,3 +139,31 @@ def cmd_manual(args) -> int:
     rows = store.fetch(connect(), "select channel_key, field, value, as_of, note from yt_manual order by channel_key, field")
     print(reports.table(rows, ["channel_key", "field", "value", "as_of", "note"]))
     return 0
+
+
+def cmd_quota(args) -> int:
+    """Today's Data API units per GCP project, read from Cloud Monitoring (needs a gcloud login)."""
+    projects = registry.load_projects()
+    if args.project:
+        projects = [p for p in projects if p.id == args.project]
+        if not projects:
+            print(f"{args.project} 은 channels.toml 의 [projects] 에 없어요.")
+            return 2
+    accounts = [args.account] if args.account else None
+    mon = quota.Monitoring(lambda pid: quota.gcloud_token_for(pid, accounts))
+    now = datetime.now(timezone.utc)
+    infos, texts = [], []
+    for project in projects:
+        try:
+            info = quota.collect_project(mon, project, now)
+        except Exception as e:  # one unreadable project must not hide the others
+            msg = str(e) if isinstance(e, quota.QuotaAccessError) else f"{type(e).__name__}"
+            texts.append(f"{project.label} ({project.id})\n  읽지 못했어요: {msg}")
+            continue
+        infos.append(info)
+        texts.append(quota.report_from(info))
+    if args.json:
+        print(json.dumps(infos, ensure_ascii=False, indent=1))
+    else:
+        print("\n\n".join(texts))
+    return 0 if infos else 1

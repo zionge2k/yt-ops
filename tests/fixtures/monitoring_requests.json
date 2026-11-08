@@ -1,0 +1,97 @@
+{
+ "timeSeries": [
+  {
+   "metric": {
+    "type": "serviceruntime.googleapis.com/api/request_count",
+    "labels": {
+     "response_code": "200"
+    }
+   },
+   "resource": {
+    "type": "consumed_api",
+    "labels": {
+     "method": "youtube.api.v3.PlaylistItems.List",
+     "credential_id": "project_number:1:api_key:AAAA-v63007-abcdef"
+    }
+   },
+   "metricKind": "DELTA",
+   "valueType": "INT64",
+   "points": [
+    {
+     "interval": {
+      "startTime": "2026-11-08T00:00:00Z",
+      "endTime": "2026-11-08T00:00:00Z"
+     },
+     "value": {
+      "int64Value": "300"
+     }
+    },
+    {
+     "interval": {
+      "startTime": "2026-11-08T03:00:00Z",
+      "endTime": "2026-11-08T03:00:00Z"
+     },
+     "value": {
+      "int64Value": "2"
+     }
+    }
+   ]
+  },
+  {
+   "metric": {
+    "type": "serviceruntime.googleapis.com/api/request_count",
+    "labels": {
+     "response_code": "200"
+    }
+   },
+   "resource": {
+    "type": "consumed_api",
+    "labels": {
+     "method": "youtube.api.v3.Videos.List",
+     "credential_id": "oauth:BBBB-6sl59-ghijkl"
+    }
+   },
+   "metricKind": "DELTA",
+   "valueType": "INT64",
+   "points": [
+    {
+     "interval": {
+      "startTime": "2026-11-08T00:00:00Z",
+      "endTime": "2026-11-08T00:00:00Z"
+     },
+     "value": {
+      "int64Value": "40"
+     }
+    }
+   ]
+  },
+  {
+   "metric": {
+    "type": "serviceruntime.googleapis.com/api/request_count",
+    "labels": {
+     "response_code": "403"
+    }
+   },
+   "resource": {
+    "type": "consumed_api",
+    "labels": {
+     "method": "youtube.api.v3.Videos.List",
+     "credential_id": "oauth:BBBB-6sl59-ghijkl"
+    }
+   },
+   "metricKind": "DELTA",
+   "valueType": "INT64",
+   "points": [
+    {
+     "interval": {
+      "startTime": "2026-11-08T03:00:00Z",
+      "endTime": "2026-11-08T03:00:00Z"
+     },
+     "value": {
+      "int64Value": "5"
+     }
+    }
+   ]
+  }
+ ]
+}

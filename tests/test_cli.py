@@ -86,3 +86,47 @@ def test_no_quota_line_when_some_error_is_something_else(monkeypatch, capsys):
 def test_no_quota_line_without_errors(monkeypatch, capsys):
     assert _run_with_errors(monkeypatch, []) == 0
     assert "quota_exhausted" not in capsys.readouterr().out
+
+
+def _info(pid, used=10):
+    return {"project": pid, "label": "L" + pid, "channels": [], "used": used, "limit": 10000, "hours": {},
+            "by_credential": {}, "top_methods": [], "analytics_used": None,
+            "reset_at": "2026-11-08T17:00:00+09:00", "as_of": "2026-11-08T14:02:00+09:00"}
+
+
+def test_quota_json_dumps_collected_dict(monkeypatch, capsys):
+    import json
+    seen = []
+    monkeypatch.setattr(cli.commands.quota, "collect_project", lambda mon, p, now: seen.append(p.id) or _info(p.id))
+    assert cli.main(["quota", "--json"]) == 0
+    assert [i["project"] for i in json.loads(capsys.readouterr().out)] == seen == [
+        "shorts-factory-492813", "nowbrd-release"]
+
+
+def test_quota_project_filter_and_text_report(monkeypatch, capsys):
+    monkeypatch.setattr(cli.commands.quota, "collect_project", lambda mon, p, now: _info(p.id, 8500))
+    assert cli.main(["quota", "--project", "nowbrd-release", "--account", "a@x.com"]) == 0
+    out = capsys.readouterr().out
+    assert "nowbrd-release" in out and "shorts-factory" not in out and "⚠ Data API  8,500 / 10,000" in out
+
+
+def test_quota_unknown_project(monkeypatch, capsys):
+    assert cli.main(["quota", "--project", "nope"]) == 2
+
+
+def test_quota_continues_after_failure_and_fails_only_if_all_fail(monkeypatch, capsys):
+    def collect(mon, p, now):
+        if p.id == "shorts-factory-492813":
+            raise cli.commands.quota.QuotaAccessError("shorts-factory-492813: 읽을 수 있는 계정이 없어요.")
+        return _info(p.id)
+
+    monkeypatch.setattr(cli.commands.quota, "collect_project", collect)
+    assert cli.main(["quota"]) == 0
+    out = capsys.readouterr().out
+    assert "읽지 못했어요" in out and "Lnowbrd-release" in out
+
+    def all_fail(mon, p, now):
+        raise cli.commands.quota.QuotaAccessError("x")
+
+    monkeypatch.setattr(cli.commands.quota, "collect_project", all_fail)
+    assert cli.main(["quota"]) == 1
