@@ -74,3 +74,17 @@ def test_both_workflows_read_quota_before_render_and_pass_it():
         assert '--quota "$RUNNER_TEMP/quota.json"' in render_step, name
         assert text.index("GCP_MONITOR_ADC") < text.index("python -m ytops quota") < text.index("python -m ytops render"), name
         assert re.search(r"^\s+id-token:\s*write\s*$", text, re.M), name
+
+
+def test_tests_run_before_schema_and_collect():
+    for name in ("daily.yml", "live.yml"):
+        text = _text(name)
+        assert "python -m pytest" in text, name
+        t = text.index("python -m pytest")
+        assert t < text.index("python -m ytops"), name
+        if name == "daily.yml":
+            assert t < text.index("schema --apply"), name
+
+
+def test_test_workflow_has_no_secrets():
+    assert "secrets." not in _text("test.yml")

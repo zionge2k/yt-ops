@@ -1,0 +1,36 @@
+name: test
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - run: pip install -r requirements.txt pytest
+
+      - run: python -m pytest -q
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: node --check site/app.js
+
+      - run: node --test tests/test_site_stale.mjs

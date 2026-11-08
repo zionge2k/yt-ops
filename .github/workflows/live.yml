@@ -56,6 +56,10 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      # Broken code must not reach the DB or the page: the suite runs before anything touches them.
+      - name: 테스트
+        run: pip install pytest && python -m pytest -q
+
       # Deploy must happen even if collection reports errors; failure is surfaced in the last step.
       - name: 라이브 수집
         id: collect

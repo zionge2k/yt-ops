@@ -96,7 +96,7 @@ def _schema(args) -> int:
     if not args.apply:
         print(f"{SCHEMA_PATH} (use --apply to run it)")
         return 0
-    print(f"스키마 적용: {SCHEMA_PATH} — 여러 번 실행해도 같다. 형아 승인 뒤에만 실행할 것.")
+    print(f"스키마 적용: {SCHEMA_PATH} — 여러 번 실행해도 같다. daily workflow 가 매일 아침 실행하므로 db/schema.sql 변경은 push 전에 로컬에서 검토할 것.")
     store.apply_schema(store.connect(), SCHEMA_PATH)
     print("적용 완료")
     return 0
