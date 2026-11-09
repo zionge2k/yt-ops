@@ -28,8 +28,9 @@ const kst = (iso) => {
   return o;
 };
 const mdhm = (iso) => { const p = kst(iso); return `${p.month}/${p.day} ${p.hour}:${p.minute}`; };
-const ymd = (d) => { if (!d) return "—"; const [, m, dd] = d.split("-"); return `${+m}/${+dd}`; };
-const ymdFull = (d) => { if (!d) return "—"; const [y, m, dd] = d.split("-"); return `${y}.${+m}.${+dd}`; };
+// Accept "YYYY-MM-DD" and full ISO timestamps (render emits both); only the date part is used.
+const ymd = (d) => { if (!d) return "—"; const [, m, dd] = String(d).slice(0, 10).split("-"); return `${+m}/${+dd}`; };
+const ymdFull = (d) => { if (!d) return "—"; const [y, m, dd] = String(d).slice(0, 10).split("-"); return `${y}.${+m}.${+dd}`; };
 const COLOR = { red: "var(--red)", purple: "var(--purple)", blue: "var(--blue)", grey: "var(--off)" };
 const col = (s) => COLOR[s] || COLOR.grey;
 const nameOf = (key) => { if (key == null) return "상황판"; const c = DATA.channels.find((x) => x.key === key); return c ? c.display : key; };
