@@ -11,8 +11,9 @@ NOW = datetime(2026, 11, 10, 3, 4, 5, 678000, tzinfo=timezone.utc)
 
 
 class FakeResponse:
-    def __init__(self, status_code=200, text=""):
+    def __init__(self, status_code=200, text="", content=None):
         self.status_code, self.text = status_code, text
+        self.content = content if content is not None else text.encode("utf-8")
 
 
 class FakeSession:
@@ -103,6 +104,13 @@ def test_download_returns_text_and_uses_a_timeout():
     assert client(session=session).download("https://example/report") == "date,video_id\n"
     url, kwargs = session.gets[0]
     assert url == "https://example/report" and kwargs["timeout"] == reporting.DOWNLOAD_TIMEOUT
+
+
+def test_download_decodes_the_raw_bytes_as_utf8_and_drops_a_bom():
+    # `.text` would guess ISO-8859-1 for text/csv without a charset and turn the BOM into mojibake
+    body = "\ufeffdate,video_id\n".encode("utf-8")
+    session = FakeSession(FakeResponse(200, "ï»¿date,video_id\n", content=body))
+    assert client(session=session).download("https://example/report") == "date,video_id\n"
 
 
 def test_download_raises_on_non_200_without_echoing_the_url():

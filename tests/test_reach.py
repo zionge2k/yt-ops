@@ -42,10 +42,30 @@ def test_parse_report_accepts_both_date_formats():
     assert [r["day"] for r in rows] == [date(2026, 11, 7), date(2026, 11, 8)]
 
 
-def test_parse_report_ctr_over_one_is_a_percent():
-    rows = _parse(_csv(_row("20261107", "ratio", 100, "0.052"), _row("20261107", "pct", 100, "5.2"),
-                       _row("20261107", "one", 100, "1"), _row("20261107", "zero", 100, "0")))
-    assert {r["video_id"]: r["ctr"] for r in rows} == {"ratio": 0.052, "pct": 0.052, "one": 1.0, "zero": 0.0}
+def test_parse_report_a_file_with_ctr_over_one_is_percent_throughout():
+    rows = _parse(_csv(_row("20261107", "hi", 100, "4.1"), _row("20261107", "lo", 100, "0.8")))
+    assert {r["video_id"]: r["ctr"] for r in rows} == {"hi": 0.041, "lo": 0.008}
+
+
+def test_parse_report_a_file_of_ratios_is_left_alone():
+    rows = _parse(_csv(_row("20261107", "a", 100, "0.052"), _row("20261107", "one", 100, "1"),
+                       _row("20261107", "zero", 100, "0")))
+    assert {r["video_id"]: r["ctr"] for r in rows} == {"a": 0.052, "one": 1.0, "zero": 0.0}
+
+
+def test_parse_report_checks_the_channel_when_one_is_expected():
+    text = _csv(_row("20261107", "a", 1, "0.1", channel="UC1"))
+    assert len(reach.parse_report(text, "soombi", NOW, expected_channel_id="UC1")) == 1
+    assert len(reach.parse_report(text, "soombi", NOW, expected_channel_id=None)) == 1
+    with pytest.raises(ValueError, match="UC1 != UC9"):
+        reach.parse_report(text, "soombi", NOW, expected_channel_id="UC9")
+
+
+def test_collect_rejects_a_report_of_another_channel():
+    fake = FakeReporting("job1", [_report("r1", "2026-11-09T00:30:00Z")],
+                         {"https://dl/r1": _csv(_row("20261107", "a", 1, "0.1", channel="UCother"))})
+    with pytest.raises(ValueError, match="UCother != UC1"):
+        reach.collect(_ctx(fake), TODAY, TODAY)
 
 
 def test_parse_report_is_header_driven_and_skips_blank_lines():

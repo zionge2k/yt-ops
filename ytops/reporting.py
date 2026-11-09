@@ -76,7 +76,8 @@ class ReportingClient:
         resp = self._session.get(url, timeout=DOWNLOAD_TIMEOUT)
         if resp.status_code != 200:
             raise ReportDownloadError(resp.status_code)
-        return resp.text
+        # decode the raw bytes: `.text` guesses ISO-8859-1 for text/csv without a charset, which breaks a BOM
+        return resp.content.decode("utf-8-sig")
 
 
 def for_key(key: str) -> ReportingClient:

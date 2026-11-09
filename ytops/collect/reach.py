@@ -11,7 +11,7 @@ from ytops.videos import parse_ts
 # YouTube regenerates and backfills report files, so a run re-reads the reports created in the last
 # week; rows are upserted on (channel, day, video) and a later report wins an overlapping day.
 LOOKBACK_DAYS = 7
-# CSV columns this collector reads (channel_id is ignored: the report belongs to the authorized channel).
+# CSV columns this collector reads; channel_id is optional and only checked against the expected channel.
 REQUIRED = ("date", "video_id", "video_thumbnail_impressions", "video_thumbnail_impressions_ctr")
 _EPOCH = datetime.min.replace(tzinfo=timezone.utc)
 
@@ -30,16 +30,18 @@ def _count(text: str) -> int | None:
 
 
 def _ratio(text: str) -> float | None:
-    """CTR as a 0..1 ratio. The docs say ratio; a value above 1 can only be a percent, so divide by 100."""
     text = text.strip()
-    if not text:
-        return None
-    value = float(text)
-    return round(value / 100, 10) if value > 1 else value
+    return float(text) if text else None
 
 
-def parse_report(text: str, channel_key: str, collected_at: datetime) -> list[dict]:
-    """yt_reach_daily rows of one report file (header-driven CSV; blank lines are skipped)."""
+def parse_report(text: str, channel_key: str, collected_at: datetime,
+                 expected_channel_id: str | None = None) -> list[dict]:
+    """yt_reach_daily rows of one report file (header-driven CSV; blank lines are skipped).
+
+    CTR is a 0..1 ratio per the docs. A value above 1 can only be a percent, and units never mix inside one
+    file, so if any CTR in the file exceeds 1 the whole file is divided by 100.
+    If `expected_channel_id` is given, a row of another channel raises ValueError.
+    """
     text = text.lstrip("﻿")
     if not text.strip():
         return []
@@ -51,6 +53,9 @@ def parse_report(text: str, channel_key: str, collected_at: datetime) -> list[di
     rows = []
     for raw in reader:
         cells = {name: (raw.get(name) or "") for name in REQUIRED}
+        row_channel = (raw.get("channel_id") or "").strip()
+        if expected_channel_id and row_channel and row_channel != expected_channel_id:
+            raise ValueError(f"report channel {row_channel} != {expected_channel_id}")
         if not any(cell.strip() for cell in cells.values()):
             continue  # blank or comma-only line
         video_id = cells["video_id"].strip()
@@ -62,6 +67,10 @@ def parse_report(text: str, channel_key: str, collected_at: datetime) -> list[di
             "ctr": _ratio(cells["video_thumbnail_impressions_ctr"]),
             "collected_at": collected_at,
         })
+    if any(r["ctr"] is not None and r["ctr"] > 1 for r in rows):
+        for r in rows:
+            if r["ctr"] is not None:
+                r["ctr"] = round(r["ctr"] / 100, 10)
     return rows
 
 
@@ -76,6 +85,7 @@ def collect(ctx: CollectContext, start: date, end: date) -> dict[str, list[dict]
         url = report.get("downloadUrl")
         if not url:
             continue
-        for row in parse_report(ctx.reporting.download(url), ctx.key, ctx.collected_at):
+        for row in parse_report(ctx.reporting.download(url), ctx.key, ctx.collected_at,
+                                 ctx.channel.channel_id):
             merged[(row["day"], row["video_id"])] = row
     return {"yt_reach_daily": [merged[k] for k in sorted(merged)]}
