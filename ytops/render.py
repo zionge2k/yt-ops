@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import re
 import sys
+import statistics
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from ytops import periods, store
-from ytops.errors import human_error
+from ytops.errors import KST, human_error
 
 fetch = store.fetch  # single injectable DB read; tests monkeypatch it
 
@@ -20,6 +21,17 @@ SUBS_GOAL, HOURS_GOAL = 1000, 4000
 SEGMENTS = {"subscribed": "subscribers", "unsubscribed": "viewers"}
 PEAK_FIELDS = {"subscribers": "peak_hours", "viewers": "peak_hours_viewers"}
 TOP_N, GENRE_N, COUNTRY_N = 3, 5, 5
+# Thumbnail reach (yt_reach_daily). The 28-day detail window is judged against the 28 days before it,
+# and the reach feed can trail the channel feed, hence a week of slack on the read.
+REACH_WINDOW_DAYS, REACH_BOARD_DAYS = 28, 7
+REACH_FETCH_DAYS = 2 * REACH_WINDOW_DAYS + 7
+REACH_BASELINE_MIN_DAYS = 7  # fewer days of data in the comparison stretch is not a baseline
+REACH_TOP_N = 12
+# Verdict on a video (channel 28-day ctr c, median impressions m of its videos): a video is judged only once
+# it has had a week and 100 impressions; "fix" = shown a lot, clicked little; "push" = clicked a lot, shown little.
+REACH_MIN_AGE_DAYS, REACH_MIN_IMPRESSIONS = 7, 100
+REACH_FIX_CTR_RATIO = 0.67
+REACH_PUSH_CTR_RATIO, REACH_PUSH_IMPRESSIONS_RATIO = 1.5, 0.5
 
 
 def _json_default(o):
@@ -101,7 +113,7 @@ TABLE_OWNERS = {
     "yt_playlist": "playlists", "yt_playlist_item": "playlists", "yt_audience": "audience",
     "yt_video": "video", "yt_video_daily": "video_daily", "yt_schedule": "schedule",
     "yt_live_snapshot": "live", "yt_channel_daily": "channel_daily", "yt_yearly_minutes": "channel_daily",
-    "yt_subs_snapshot": "subs",
+    "yt_subs_snapshot": "subs", "yt_reach_daily": "reach",
 }
 
 
@@ -383,6 +395,120 @@ def _subs_sources(rows) -> dict:
             "lost": _sum(r.get("subs_lost") for r in rows)}
 
 
+def _weighted_ctr(pairs) -> float | None:
+    """CTR of several (impressions, ctr) groups: clicks over impressions, i.e. each ctr weighted by its impressions."""
+    pairs = [(_num(i), _num(c)) for i, c in pairs if i is not None and c is not None]
+    total = sum(i for i, _ in pairs)
+    return sum(i * c for i, c in pairs) / total if total else None
+
+
+def _reach_latest_day(rows) -> date | None:
+    return max((r["day"] for r in rows), default=None)
+
+
+def _in_window(rows, end, days):
+    start, stop = periods.window(end, days)
+    return [r for r in rows if start <= r["day"] <= stop]
+
+
+def _reach_window(rows, end, days) -> tuple[int | None, float | None]:
+    """(impressions, ctr) over the `days` days ending at `end`; ctr is impressions-weighted, None without impressions."""
+    got = _in_window(rows, end, days)
+    return _sum(r.get("impressions") for r in got), _weighted_ctr((r.get("impressions"), r.get("ctr")) for r in got)
+
+
+def _reach_summary(rows, end, days, up, down) -> dict:
+    """Impressions and ctr of the window ending at `end`, judged against the stretch just before it.
+
+    The stretch is periods.compare_window (at least 28 days: a short window is compared with a multi-week
+    average, not one noisy week). Both sides are compared per day with data, so a window YouTube has only half
+    filled yet does not read as a drop; a stretch with under a week of data gives no comparison at all.
+    impressions_pct is a percent change; ctr_pp is in percentage points; the statuses colour them like h48
+    (rising red, falling blue). ctr is a 0..1 ratio, as stored.
+    """
+    cur_i, cur_c = _reach_window(rows, end, days)
+    cur_days = len({r["day"] for r in _in_window(rows, end, days)})
+    prev_start, prev_end = periods.compare_window(periods.window(end, days))
+    prev_len = (prev_end - prev_start).days + 1
+    prev_i, prev_c = _reach_window(rows, prev_end, prev_len)
+    prev_days = len({r["day"] for r in _in_window(rows, prev_end, prev_len)})
+    comparable = cur_days > 0 and prev_days >= REACH_BASELINE_MIN_DAYS
+    pct = (periods.pct_change(cur_i / cur_days, prev_i / prev_days)
+           if comparable and cur_i is not None and prev_i is not None else None)
+    ctr_pct = periods.pct_change(cur_c, prev_c) if comparable else None
+    ctr_pp = round((cur_c - prev_c) * 100, 2) if comparable and cur_c is not None and prev_c is not None else None
+    return {"impressions": cur_i, "ctr": _round(cur_c, 5), "impressions_pct": pct, "ctr_pp": ctr_pp,
+            "impressions_status": periods.color_of(pct, up, down), "ctr_status": periods.color_of(ctr_pct, up, down),
+            "as_of": end}
+
+
+def _reach_verdict(impressions, ctr, age_days, channel_ctr, median_impressions) -> str | None:
+    """"fix" / "push" / "ok", or None while a video is too young, too small or its baseline unknown."""
+    if age_days is None or age_days < REACH_MIN_AGE_DAYS:
+        return None
+    if impressions is None or ctr is None or impressions < REACH_MIN_IMPRESSIONS:
+        return None
+    if channel_ctr is None or median_impressions is None:
+        return None
+    if ctr <= REACH_FIX_CTR_RATIO * channel_ctr and impressions >= median_impressions:
+        return "fix"
+    if ctr >= REACH_PUSH_CTR_RATIO * channel_ctr and impressions <= REACH_PUSH_IMPRESSIONS_RATIO * median_impressions:
+        return "push"
+    return "ok"
+
+
+def _kst_date(value) -> date | None:
+    """Seoul calendar date of a stored timestamp (what the page shows as "올린 날")."""
+    if isinstance(value, datetime):
+        return (value if value.tzinfo else value.replace(tzinfo=timezone.utc)).astimezone(KST).date()
+    return value if isinstance(value, date) else None
+
+
+def _reach_by_video(rows, end, days) -> dict[str, tuple]:
+    """{video_id: (impressions, ctr)} over the window, for videos that were shown at all."""
+    groups: dict[str, list] = {}
+    for r in _in_window(rows, end, days):
+        groups.setdefault(r["video_id"], []).append(r)
+    out = {}
+    for vid, got in groups.items():
+        impressions = _sum(r.get("impressions") for r in got)
+        if impressions:
+            out[vid] = (impressions, _weighted_ctr((r.get("impressions"), r.get("ctr")) for r in got))
+    return out
+
+
+def _reach_detail(rows, end, channel_key, videos, per_video, up, down) -> dict:
+    """Detail panel data: 28-day summary, this week's uploads, the most shown videos, shorts vs long ctr."""
+    stats = _reach_by_video(rows, end, REACH_WINDOW_DAYS)
+    channel_ctr = _reach_window(rows, end, REACH_WINDOW_DAYS)[1]
+    median = statistics.median(i for i, _ in stats.values()) if stats else None
+
+    def row(vid):
+        v = videos.get(vid) or {}
+        published = _kst_date(v.get("published_at"))
+        impressions, ctr = stats.get(vid, (None, None))
+        verdict = _reach_verdict(impressions, ctr, (end - published).days if published else None, channel_ctr, median)
+        return {"video_id": vid, "title": v.get("title"), "published_at": published, "kind": v.get("content_kind"),
+                "impressions": impressions, "ctr": _round(ctr, 5), "views": (per_video.get(vid) or {}).get("views"),
+                "verdict": verdict}
+
+    # uploads of the last 7 days up to the newest reach day (Seoul dates), newest first; kept even when YouTube
+    # has not reported them yet, so a fresh upload shows up with "—" instead of missing
+    week_start = end - timedelta(days=REACH_BOARD_DAYS - 1)
+    this_week = sorted(
+        ((v["published_at"], vid) for vid, v in videos.items()
+         if v.get("channel_key") == channel_key and week_start <= (_kst_date(v["published_at"]) or date.min) <= end),
+        reverse=True)
+    most_shown = sorted(stats, key=lambda vid: (-stats[vid][0], vid))[:REACH_TOP_N]
+
+    def kind_ctr(kind):
+        return _round(_weighted_ctr(stats[vid] for vid in stats if (videos.get(vid) or {}).get("content_kind") == kind), 5)
+
+    return {"days": REACH_WINDOW_DAYS, **_reach_summary(rows, end, REACH_WINDOW_DAYS, up, down),
+            "this_week": [row(vid) for _, vid in this_week], "all": [row(vid) for vid in most_shown],
+            "shorts_ctr": kind_ctr("short"), "long_ctr": kind_ctr("long")}
+
+
 def build(conn, *, today: date, config, now: datetime | None = None, quota: dict | None = None) -> dict:
     now = now or datetime.now(timezone.utc)
     channels, th = config["channels"], config["thresholds"]
@@ -419,6 +545,9 @@ def build(conn, *, today: date, config, now: datetime | None = None, quota: dict
                                       "(select channel_key, max(as_of) from yt_audience group by 1)",
                                 (), problems=problems)
 
+    reach_rows = _safe_fetch(conn, "select * from yt_reach_daily where day >= %s",
+                             (latest - timedelta(days=REACH_FETCH_DAYS),), problems=problems) if latest else []
+
     out_channels, board, subs_trend, watch_trend, detail = [], {}, {}, {}, {}
     errors: list[dict] = []
     for k in keys:
@@ -434,6 +563,8 @@ def build(conn, *, today: date, config, now: datetime | None = None, quota: dict
         monet = _monet(subs_n, yearly.get(k), bool(s and s.get("monetized")))
         # a channel behind the global latest day (or whose collection failed) gets no comparison
         comparable = not failed and ch_latest[k] is not None and ch_latest[k] >= (latest or ch_latest[k])
+        ch_reach = [r for r in reach_rows if r["channel_key"] == k]
+        reach_end = _reach_latest_day(ch_reach)  # each channel's own newest report day, not the channel feed's
         board[k] = {
             "subscribers": subs_n,
             "subscribers_approx": subs_approx,
@@ -441,6 +572,7 @@ def build(conn, *, today: date, config, now: datetime | None = None, quota: dict
             "live": _live_state([r for r in live_rows if r["channel_key"] == k], now, _live_run(runs, k)) if ch.is_live else None,
             "health": health_of(monet),
             "monet": monet,
+            "reach7": _reach_summary(ch_reach, reach_end, REACH_BOARD_DAYS, up, down) if reach_end else None,
         }
         subs_trend[k] = _subs_trend(by_day, latest, first_day[k], subs_n, up, down)
         watch_trend[k] = _watch_trend(by_day, latest, first_day[k], up, down)
@@ -453,6 +585,7 @@ def build(conn, *, today: date, config, now: datetime | None = None, quota: dict
             "top_live": _top(per_video, videos, "live_archive"),
             "subs_sources": _subs_sources(recent_daily),
             "genres": _genres(per_video, videos, playlists, [i for i in items if i["channel_key"] == k]),
+            "reach": _reach_detail(ch_reach, reach_end, k, videos, per_video, up, down) if reach_end else None,
         }
 
     # Render-side read failures are shown on the page but are not collect failures (channels untouched).

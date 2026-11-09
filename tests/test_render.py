@@ -2,6 +2,8 @@ import json
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
+import pytest
+
 from ytops import registry, render
 
 UTC = timezone.utc
@@ -61,6 +63,29 @@ def _audience_rows():
     ]
 
 
+AS_OF = date(2026, 11, 3)  # newest reach day: reach lags the channel feed (LATEST is 11-04)
+
+
+def _reach(key, video, day, impressions, ctr):
+    return {"channel_key": key, "day": day, "video_id": video, "impressions": impressions,
+            "ctr": Decimal(ctr), "collected_at": None}
+
+
+def _reach_rows():
+    """soombi: one steady video through both comparison stretches (56 days) plus a busy last week."""
+    rows = [_reach("soombi", "V_BASE", AS_OF - timedelta(days=i), 1000, "0.04") for i in range(56)]
+    for i in range(7):
+        day = AS_OF - timedelta(days=i)
+        rows += [_reach("soombi", v, day, imp, ctr) for v, imp, ctr in (
+            ("V_FIX", 1000, "0.01"), ("V_OK", 1000, "0.05"), ("V_PUSH", 100, "0.12"),
+            ("V_TINY", 2, "0.5"), ("V_SHORT", 500, "0.08"), ("V_GHOST", 300, "0.05"))]  # V_GHOST: not in yt_video
+        if i < 3:
+            rows.append(_reach("soombi", "V_NEW", day, 400, "0.06"))  # published 11-01
+    # a2p: three days only -> numbers, but no baseline to compare with
+    rows += [_reach("a2p", "A_ONE", AS_OF - timedelta(days=i), 500, "0.1") for i in range(3)]
+    return rows
+
+
 ROWS = {
     "yt_channel_daily": _daily(),
     "yt_subs_snapshot": [{"channel_key": "soombi", "taken_on": date(2026, 11, 6),
@@ -94,12 +119,23 @@ ROWS = {
         {"video_id": "L4", "channel_key": "soombi", "day": LATEST, "views": 1, "minutes": Decimal(6)},
         {"video_id": "A1", "channel_key": "soombi", "day": LATEST, "views": 2, "minutes": Decimal(300)},
         {"video_id": "S1", "channel_key": "soombi", "day": LATEST, "views": 900, "minutes": Decimal(9000)},
+        {"video_id": "V_FIX", "channel_key": "soombi", "day": LATEST, "views": 55, "minutes": Decimal(10)},
     ],
     "yt_video": [
         {"video_id": v, "channel_key": "soombi", "title": f"t-{v}", "thumbnail_url": f"https://x/{v}.jpg",
          "published_at": datetime(2026, 10, 1, tzinfo=UTC), "content_kind": k}
         for v, k in (("L1", "long"), ("L2", "long"), ("L3", "long"), ("L4", "long"),
                      ("A1", "live_archive"), ("S1", "short"))
+    ] + [
+        {"video_id": v, "channel_key": ch, "title": f"t-{v}", "thumbnail_url": None,
+         "published_at": datetime(*published, tzinfo=UTC), "content_kind": k}
+        for v, ch, k, published in (
+            ("V_BASE", "soombi", "long", (2026, 8, 1)), ("V_FIX", "soombi", "long", (2026, 9, 20)),
+            ("V_OK", "soombi", "long", (2026, 9, 25)), ("V_PUSH", "soombi", "long", (2026, 10, 1)),
+            ("V_TINY", "soombi", "long", (2026, 10, 5)), ("V_SHORT", "soombi", "short", (2026, 10, 20)),
+            ("V_NEW", "soombi", "long", (2026, 11, 1, 3)),         # 2 days before the newest reach day
+            ("V_QUIET", "soombi", "long", (2026, 10, 30, 16)),     # 10-31 01:00 in Seoul; no reach rows yet
+            ("A_ONE", "a2p", "long", (2026, 10, 1)))
     ],
     "yt_playlist": [{"channel_key": "soombi", "playlist_id": "p1", "title": "Waltz", "item_count": 2},
                     {"channel_key": "soombi", "playlist_id": "p2", "title": "Jazz", "item_count": 2}],
@@ -108,6 +144,7 @@ ROWS = {
                          {"playlist_id": "p2", "video_id": "L1", "channel_key": "soombi"},
                          {"playlist_id": "p2", "video_id": "A1", "channel_key": "soombi"}],
     "yt_audience": _audience_rows(),
+    "yt_reach_daily": _reach_rows(),
 }
 
 
@@ -150,7 +187,7 @@ def test_v3_top_level_shape(monkeypatch):
 
 def test_board_h48_and_subscribers(monkeypatch):
     b = _build(monkeypatch)["board"]["soombi"]
-    assert set(b) == {"subscribers", "subscribers_approx", "h48", "live", "health", "monet"}
+    assert set(b) == {"subscribers", "subscribers_approx", "h48", "live", "health", "monet", "reach7"}
     assert b["subscribers"] == 905 and b["subscribers_approx"] is False  # exact (905) above the api value (900)
     # 11-03 (1.0h) + 11-04 (2.0h) = 3.0 vs 11-01 + 11-02 = 4.0 -> -25%
     assert b["h48"] == {"cur": 3.0, "prev": 4.0, "pct": -25.0, "status": "blue", "days": ["2026-11-03", "2026-11-04"]}
@@ -247,7 +284,7 @@ def test_watch_trend_windows(monkeypatch):
 
 def test_detail_top_videos_and_genres(monkeypatch):
     dt = _build(monkeypatch)["detail"]["soombi"]
-    assert set(dt) == {"monet", "audience", "top_long", "top_live", "subs_sources", "genres"}
+    assert set(dt) == {"monet", "audience", "top_long", "top_live", "subs_sources", "genres", "reach"}
     assert [v["video_id"] for v in dt["top_long"]] == ["L1", "L2", "L3"]  # top 3 by minutes, shorts excluded
     assert dt["top_long"][0] == {"video_id": "L1", "title": "t-L1", "thumb": "https://x/L1.jpg",
                                  "published_at": "2026-10-01T00:00:00+00:00", "hours": 11.0, "views": 15}
@@ -576,3 +613,264 @@ def test_budget_stage_fails_channel(monkeypatch):
     d = _build(monkeypatch, yt_run_log=log)
     flags = {c["key"]: c["collect_failed"] for c in d["channels"]}
     assert flags["a2p"] is True and flags["soombi"] is False
+
+
+# ---------- thumbnail reach (yt_reach_daily) ----------
+
+def _r(day, impressions, ctr, video="v"):
+    return {"channel_key": "k", "day": day, "video_id": video, "impressions": impressions, "ctr": ctr}
+
+
+def test_reach_latest_day():
+    assert render._reach_latest_day([]) is None
+    rows = [_r(date(2026, 11, 1), 1, 0.1), _r(date(2026, 11, 3), 1, 0.1), _r(date(2026, 11, 2), 1, 0.1)]
+    assert render._reach_latest_day(rows) == date(2026, 11, 3)
+
+
+def test_reach_window_sums_impressions_and_weights_ctr():
+    end = date(2026, 11, 7)
+    rows = [_r(date(2026, 11, 7), 100, Decimal("0.10")), _r(date(2026, 11, 5), 300, Decimal("0.02"), "w"),
+            _r(date(2026, 11, 1), 9999, 0.9),   # day 7 of the window counts: 11-01 .. 11-07
+            _r(date(2026, 10, 31), 5000, 0.5)]  # one day before the window
+    imp, ctr = render._reach_window(rows, end, 7)
+    assert imp == 10399 and type(imp) is int
+    assert ctr == pytest.approx((100 * 0.10 + 300 * 0.02 + 9999 * 0.9) / 10399)
+    # a 3-day window ends at the same day: 11-05 .. 11-07
+    assert render._reach_window(rows, end, 3) == pytest.approx((400, (10 + 6) / 400))
+
+
+def test_reach_window_without_data_or_impressions():
+    assert render._reach_window([], date(2026, 11, 7), 7) == (None, None)
+    assert render._reach_window([_r(date(2026, 10, 1), 5, 0.1)], date(2026, 11, 7), 7) == (None, None)
+    # zero impressions: a sum of 0 but no ctr (nothing to weigh)
+    assert render._reach_window([_r(date(2026, 11, 7), 0, 0.3)], date(2026, 11, 7), 7) == (0, None)
+    # rows lacking a ctr add impressions but not weight
+    rows = [_r(date(2026, 11, 7), 100, None), _r(date(2026, 11, 6), 100, 0.1)]
+    assert render._reach_window(rows, date(2026, 11, 7), 7) == (200, 0.1)
+
+
+def _steady(end, days, per_day, ctr):
+    return [_r(end - timedelta(days=i), per_day, ctr) for i in range(days)]
+
+
+def test_reach_summary_compares_with_the_previous_four_weeks():
+    end = date(2026, 11, 28)
+    rows = _steady(end, 7, 2000, 0.06) + _steady(end - timedelta(days=7), 28, 1000, 0.04)
+    s = render._reach_summary(rows, end, 7, 5.0, -5.0)
+    assert s["impressions"] == 14000 and s["ctr"] == 0.06 and s["as_of"] == end
+    assert s["impressions_pct"] == 100.0           # 2,000 a day against the 1,000 a day of the four weeks before
+    assert s["ctr_pp"] == 2.0                      # 6% against 4%: percentage points, not percent
+    assert s["impressions_status"] == "red" and s["ctr_status"] == "red"   # rising is red on this page
+
+
+def test_reach_summary_statuses_follow_the_page_thresholds():
+    end = date(2026, 11, 28)
+    base = _steady(end - timedelta(days=7), 28, 1000, 0.05)
+    down = render._reach_summary(_steady(end, 7, 500, 0.02) + base, end, 7, 5.0, -5.0)
+    assert down["impressions_pct"] == -50.0 and down["ctr_pp"] == -3.0
+    assert down["impressions_status"] == "blue" and down["ctr_status"] == "blue"   # falling is blue
+    flat = render._reach_summary(_steady(end, 7, 1020, 0.051) + base, end, 7, 5.0, -5.0)
+    assert flat["impressions_pct"] == 2.0 and flat["impressions_status"] == "purple"
+    assert flat["ctr_pp"] == 0.1 and flat["ctr_status"] == "purple"  # +2% relative is inside the band
+
+
+def test_reach_summary_compares_per_day_so_a_partial_window_is_not_a_drop():
+    end = date(2026, 11, 28)
+    rows = _steady(end, 3, 1000, 0.05) + _steady(end - timedelta(days=7), 28, 1000, 0.05)  # only 3 days in
+    s = render._reach_summary(rows, end, 7, 5.0, -5.0)
+    assert s["impressions"] == 3000 and s["impressions_pct"] == 0.0 and s["impressions_status"] == "purple"
+
+
+def test_reach_summary_needs_a_week_of_baseline():
+    end = date(2026, 11, 28)
+    prev_end = end - timedelta(days=7)
+    six = render._reach_summary(_steady(end, 7, 1000, 0.05) + _steady(prev_end, 6, 1000, 0.05), end, 7, 5.0, -5.0)
+    assert six["impressions"] == 7000 and six["ctr"] == 0.05
+    assert six["impressions_pct"] is None and six["ctr_pp"] is None
+    assert six["impressions_status"] == "grey" and six["ctr_status"] == "grey"
+    seven = render._reach_summary(_steady(end, 7, 1000, 0.05) + _steady(prev_end, 7, 500, 0.05), end, 7, 5.0, -5.0)
+    assert seven["impressions_pct"] == 100.0
+    assert render._reach_summary([], end, 7, 5.0, -5.0)["impressions"] is None
+
+
+@pytest.mark.parametrize("age, impressions, ctr, expected", [
+    (7, 1000, 0.0268, "fix"),     # 0.67 x 0.04 = 0.0268: the boundary counts; impressions == median counts
+    (7, 1000, 0.0269, "ok"),
+    (7, 999, 0.01, "ok"),         # low ctr but below the median: not worth the fuss
+    (30, 500, 0.06, "push"),      # 1.5 x 0.04 = 0.06; impressions == 0.5 x median counts
+    (30, 501, 0.06, "ok"),
+    (30, 100, 0.2, "push"),
+    (6, 5000, 0.001, None),       # younger than a week
+    (7, 99, 0.2, None),           # too few impressions to judge
+    (7, 100, 0.2, "push"),        # exactly 100 is enough
+    (None, 5000, 0.001, None),    # publish date unknown
+    (30, None, None, None),
+])
+def test_reach_verdict(age, impressions, ctr, expected):
+    assert render._reach_verdict(impressions, ctr, age, 0.04, 1000) == expected
+
+
+def test_reach_verdict_without_channel_baseline():
+    assert render._reach_verdict(5000, 0.01, 30, None, 1000) is None
+    assert render._reach_verdict(5000, 0.01, 30, 0.04, None) is None
+
+
+def test_reach_thresholds_are_named_constants():
+    assert (render.REACH_MIN_AGE_DAYS, render.REACH_MIN_IMPRESSIONS) == (7, 100)
+    assert (render.REACH_FIX_CTR_RATIO, render.REACH_PUSH_CTR_RATIO, render.REACH_PUSH_IMPRESSIONS_RATIO) == (0.67, 1.5, 0.5)
+    assert render.REACH_TOP_N == 12
+
+
+def test_board_reach7_has_the_numbers_and_the_baseline_comparison(monkeypatch):
+    r = _build(monkeypatch)["board"]["soombi"]["reach7"]
+    assert set(r) == {"impressions", "ctr", "impressions_pct", "ctr_pp", "impressions_status", "ctr_status", "as_of"}
+    # the window ends at the newest reach day (11-03), not at the channel feed's latest day (11-04)
+    assert r["as_of"] == "2026-11-03"
+    assert r["impressions"] == 28514 and r["ctr"] == pytest.approx(0.04377, abs=1e-5)
+    # 28,514 / 7 days against the 1,000 a day of the four weeks before
+    assert r["impressions_pct"] == 307.3 and r["ctr_pp"] == 0.38
+    assert r["impressions_status"] == "red" and r["ctr_status"] == "red"
+
+
+def test_board_reach7_without_a_baseline_keeps_the_numbers(monkeypatch):
+    r = _build(monkeypatch)["board"]["a2p"]["reach7"]
+    assert r["impressions"] == 1500 and r["ctr"] == 0.1 and r["as_of"] == "2026-11-03"
+    assert r["impressions_pct"] is None and r["ctr_pp"] is None and r["impressions_status"] == "grey"
+
+
+def test_board_reach7_is_null_for_channels_without_reach_rows(monkeypatch):
+    b = _build(monkeypatch)["board"]
+    assert b["backthen"]["reach7"] is None and b["pliwav"]["reach7"] is None
+    none = _build(monkeypatch, yt_reach_daily=[])
+    assert all(v["reach7"] is None for v in none["board"].values())
+    assert all(v["reach"] is None for v in none["detail"].values())
+
+
+def _reach_detail(monkeypatch, key="soombi"):
+    return _build(monkeypatch)["detail"][key]["reach"]
+
+
+def test_detail_reach_summary(monkeypatch):
+    d = _reach_detail(monkeypatch)
+    assert set(d) == {"days", "impressions", "ctr", "impressions_pct", "ctr_pp", "impressions_status", "ctr_status",
+                      "as_of", "this_week", "all", "shorts_ctr", "long_ctr"}
+    assert d["days"] == 28 and d["as_of"] == "2026-11-03"
+    assert d["impressions"] == 49514 and d["ctr"] == pytest.approx(0.04217, abs=1e-5)
+    # 49,514 / 28 days against the 28,000 / 28 days of the 28 days before
+    assert d["impressions_pct"] == 76.8 and d["ctr_pp"] == 0.22
+    assert d["impressions_status"] == "red" and d["ctr_status"] == "red"
+    assert d["shorts_ctr"] == 0.08
+    assert d["long_ctr"] == pytest.approx(0.03878, abs=1e-5)   # V_GHOST has no kind: in neither group
+
+
+def test_detail_reach_all_is_top_videos_by_impressions_with_verdicts(monkeypatch):
+    rows = _reach_detail(monkeypatch)["all"]
+    # ties (V_FIX = V_OK = 7,000) fall back to the video id so the order never flips between runs
+    assert [r["video_id"] for r in rows] == ["V_BASE", "V_FIX", "V_OK", "V_SHORT", "V_GHOST", "V_NEW", "V_PUSH", "V_TINY"]
+    by = {r["video_id"]: r for r in rows}
+    assert set(by["V_FIX"]) == {"video_id", "title", "published_at", "kind", "impressions", "ctr", "views", "verdict"}
+    assert by["V_FIX"] == {"video_id": "V_FIX", "title": "t-V_FIX", "published_at": "2026-09-20", "kind": "long",
+                           "impressions": 7000, "ctr": 0.01, "views": 55, "verdict": "fix"}
+    # channel ctr 4.217%, median impressions 2,800 over all eight videos
+    assert by["V_FIX"]["verdict"] == "fix"                  # ctr 1% <= 0.67 x 4.2%, impressions >= median
+    assert by["V_PUSH"]["verdict"] == "push"                # ctr 12% >= 1.5 x 4.2%, impressions 700 <= 1,400
+    assert by["V_OK"]["verdict"] == "ok" and by["V_BASE"]["verdict"] == "ok"
+    assert by["V_SHORT"]["verdict"] == "ok"                 # ctr 8% is high but impressions 3,500 are above 1,400
+    assert by["V_NEW"]["verdict"] is None                   # published 2 days before the newest reach day
+    assert by["V_TINY"]["verdict"] is None                  # 14 impressions: too few to judge
+    assert by["V_GHOST"]["verdict"] is None                 # not in the catalog: publish date unknown
+    assert by["V_SHORT"]["kind"] == "short" and by["V_SHORT"]["views"] is None
+    assert by["V_GHOST"]["title"] is None and by["V_GHOST"]["published_at"] is None and by["V_GHOST"]["kind"] is None
+
+
+def test_detail_reach_all_is_capped_at_twelve(monkeypatch):
+    rows = [_reach("soombi", f"X{i:02d}", AS_OF, 100 + i, "0.05") for i in range(15)]
+    got = _build(monkeypatch, yt_reach_daily=rows)["detail"]["soombi"]["reach"]["all"]
+    assert len(got) == render.REACH_TOP_N == 12
+    assert got[0]["video_id"] == "X14" and got[-1]["video_id"] == "X03"
+
+
+def test_detail_reach_this_week_lists_videos_published_in_the_last_seven_days(monkeypatch):
+    rows = _reach_detail(monkeypatch)["this_week"]
+    # 10-28 .. 11-03 by Seoul date, newest first; a video without reach rows yet is still listed
+    assert [r["video_id"] for r in rows] == ["V_NEW", "V_QUIET"]
+    assert rows[0] == {"video_id": "V_NEW", "title": "t-V_NEW", "published_at": "2026-11-01", "kind": "long",
+                       "impressions": 1200, "ctr": 0.06, "views": None, "verdict": None}
+    assert rows[1]["published_at"] == "2026-10-31"           # 10-30 16:00 UTC is already 10-31 in Seoul
+    assert rows[1]["impressions"] is None and rows[1]["ctr"] is None and rows[1]["verdict"] is None
+
+
+def test_detail_reach_only_counts_the_channels_own_videos(monkeypatch):
+    d = _reach_detail(monkeypatch, "a2p")
+    assert [r["video_id"] for r in d["all"]] == ["A_ONE"] and d["this_week"] == []
+    assert d["impressions"] == 1500 and d["impressions_pct"] is None
+    assert d["shorts_ctr"] is None and d["long_ctr"] == 0.1
+    assert d["all"][0]["verdict"] == "ok"  # one video is its own channel baseline: neither a fix nor a push
+
+
+def test_detail_reach_is_null_without_rows(monkeypatch):
+    d = _build(monkeypatch)["detail"]
+    assert d["backthen"]["reach"] is None and d["groovewav"]["reach"] is None
+
+
+def test_reach_rows_are_read_for_a_bounded_window(monkeypatch):
+    seen = {}
+
+    def fetch(conn, sql, params=()):
+        seen[_table(sql)] = (sql, params)
+        return _fake_fetch(conn, sql, params)
+
+    monkeypatch.setattr(render, "fetch", fetch)
+    render.build(None, today=TODAY, config=_cfg(), now=NOW)
+    sql, params = seen["yt_reach_daily"]
+    assert "where day >= %s" in sql
+    # 28 days + the 28 days before them + a week of slack for a reach feed that trails the channel feed
+    assert render.REACH_FETCH_DAYS == 63 and params == (LATEST - timedelta(days=63),)
+
+
+def test_reach_is_not_read_without_channel_days(monkeypatch):
+    seen = []
+
+    def fetch(conn, sql, params=()):
+        seen.append(_table(sql))
+        return []
+
+    monkeypatch.setattr(render, "fetch", fetch)
+    render.build(None, today=TODAY, config=_cfg(), now=NOW)
+    assert "yt_reach_daily" not in seen
+
+
+def test_unreadable_reach_table_is_shown_but_does_not_stop_render(monkeypatch):
+    def fetch(conn, sql, params=()):
+        if _table(sql) == "yt_reach_daily":
+            raise RuntimeError('relation "yt_reach_daily" does not exist')
+        return _fake_fetch(conn, sql, params)
+
+    monkeypatch.setattr(render, "fetch", fetch)
+    d = json.loads(json.dumps(render.build(None, today=TODAY, config=_cfg(), now=NOW), default=render._json_default))
+    assert d["board"]["soombi"]["reach7"] is None and d["detail"]["soombi"]["reach"] is None
+    assert [e["table"] for e in d["errors"] if e["stage"] == "render"] == ["yt_reach_daily"]
+    assert not any(c["collect_failed"] for c in d["channels"])
+
+
+def test_reach_failures_never_fail_the_card(monkeypatch):
+    log = [{"run_id": "r", "errors": [
+        {"channel": "soombi", "stage": "reach", "error": "ReportDownloadError", "message": "HTTP 500"},
+        {"channel": "a2p", "stage": "store:yt_reach_daily", "error": "OperationalError"}]}]
+    d = _build(monkeypatch, yt_run_log=log)
+    flags = {c["key"]: c["collect_failed"] for c in d["channels"]}
+    assert flags["soombi"] is False and flags["a2p"] is False
+    assert d["board"]["soombi"]["h48"]["status"] != "grey" and d["board"]["a2p"]["reach7"] is not None
+    assert sorted(e["stage"] for e in d["errors"]) == ["reach", "store:yt_reach_daily"]
+
+
+def test_a_later_run_without_reach_cannot_clear_a_reach_error(monkeypatch):
+    assert render._stage_owner("reach") == "reach" and render._stage_owner("store:yt_reach_daily") == "reach"
+    t1, t2 = datetime(2026, 11, 7, 0, 30, tzinfo=UTC), datetime(2026, 11, 7, 2, 0, tzinfo=UTC)
+    log = [  # newest first: a live-only run after the daily run that hit the reach failure
+        {"run_id": "live", "started_at": t2, "channels": list(render.ORDER), "collectors": ["live"], "errors": []},
+        {"run_id": "daily", "started_at": t1, "channels": list(render.ORDER), "collectors": ["channel_daily", "reach"],
+         "errors": [{"channel": "soombi", "stage": "store:yt_reach_daily", "error": "E", "message": "m"}]},
+    ]
+    soombi = next(c for c in _build(monkeypatch, yt_run_log=log)["channels"] if c["key"] == "soombi")
+    assert [e["stage"] for e in soombi["errors"]] == ["store:yt_reach_daily"]
