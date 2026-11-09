@@ -148,3 +148,5 @@
 - 형아가 두 프로젝트에 YouTube Reporting API 켬. 8채널 모두 `reportTypes.list` 20종 · `channel_reach_basic_a1`(노출수·클릭률) 실존 확인.
 - 11:20 KST 채널마다 `channel_reach_basic_a1` job 1개씩 생성(이름 `yt-ops reach <key>`). 보고서는 생성 다음 날부터 쌓임(과거분 백필 여부는 내일 확인). 작업 목록·삭제는 `jobs.list/delete`.
 - 다음: 보고서 파일이 보이면 `collect/reach.py` + `yt_reach_daily` 표 + 화면(노출수·CTR) — 확장 규칙대로 수집기 1 · 마이그레이션 1 · render 키 1 · app.js 구역 1.
+- 11/09 낮 V2-a 코드 완료(커밋 7 + 리뷰 반영 2, 테스트 347): 표 `yt_reach_daily`(channel_key, day, video_id · impressions · ctr 비율) · `ytops/reporting.py` + `collect/reach.py`(최근 7일 보고서 재읽기 upsert, BOM-safe, 파일 단위 퍼센트 판정, channel_id 불일치 거부) · render `board.reach7`(7일 합계·채널 CTR, 직전 4주 달력일 평균 대비, 5일 이상 멈추면 stale) · `detail.reach`(이번 주 올린 영상 / 28일 전체 표, 한마디 fix·push·ok, 쇼츠 vs 롱폼 CTR) · 페이지. 한마디 규칙: 28일 채널 CTR c · 노출 중앙값 m, 노출 500 미만·올린 지 7일 미만·c≤0 은 판정 안 함, fix = ctr ≤ 0.67c 且 노출 ≥ m, push = ctr ≥ 1.5c 且 노출 ≤ 0.5m. 색은 한국식(빨강=오름). 스키마는 Mac 에서 미리 적용. **11/10 첫 파일 확인 목록**: 헤더·날짜 형식·ctr 단위, Content-Type/BOM, 한 파일 내 중복 (date,video_id), 노출 0 행 유무, 과거분 백필 수, 쇼츠 노출 포함 여부(쇼츠 vs 롱폼 패널 유지 여부).
+- 리뷰에서 보류: reach 오류가 daily 를 빨간불로 만드는 것(정책, 유지) · 다운로드 하나 실패 시 그 채널 그 회차 전부 버림(다음 날 자동 회복, M).
