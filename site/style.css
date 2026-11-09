@@ -44,13 +44,9 @@ img { max-width: 100%; }
 /* ---------- grid + cards ---------- */
 .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--gap); }
 .card {
-  background: var(--sheet); border-radius: var(--r-lg); border: 1px solid var(--rule); border-left-width: 6px;
+  background: var(--sheet); border-radius: var(--r-lg); border: 3px solid #4B5563;
   padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0;
 }
-.card.h-red { border-left-color: var(--red); }
-.card.h-purple { border-left-color: var(--purple); }
-.card.h-blue { border-left-color: var(--blue); }
-.card.h-grey { border-left-color: var(--off); }
 .namerow { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; min-width: 0; }
 .card h2 { margin: 0; font-size: 21px; font-weight: 800; line-height: 1.3; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .more { font-size: 16px; font-weight: 700; color: var(--ink-2); text-decoration: none; white-space: nowrap; flex: none; padding: 4px 0; }
@@ -188,3 +184,22 @@ img { max-width: 100%; }
 .errors { list-style: none; margin: 0; padding: 0; color: var(--ink-2); font-size: 16px; }
 .errors li { padding: 2px 0; }
 p.qwhen { margin: 0 0 var(--gap); }
+
+/* ---------- compact card: 2 columns x 3 rows, no inner lines ---------- */
+.card { gap: 10px; padding: 12px 14px 14px; }
+.cells { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+.cell { display: flex; flex-direction: column; min-width: 0; padding: 9px 0 10px; border-top: 1.5px dotted #9AA5B1; }
+.cell:nth-child(odd) { padding-right: 12px; border-right: 1.5px dotted #9AA5B1; }
+.cell:nth-child(even) { padding-left: 14px; }
+.card .live { border-top: 0; margin-top: 4px; }
+.cell .k { font-size: 14px; color: var(--ink-3); font-weight: 700; }
+.cell .v { font-size: 26px; font-weight: 800; line-height: 1.15; letter-spacing: -0.02em; white-space: nowrap; }
+.cell .v small { font-size: 14px; font-weight: 700; margin-left: 4px; letter-spacing: 0; }
+.cell .v i { font-style: normal; font-size: 14px; font-weight: 700; color: var(--ink-3); margin: 0 8px 0 2px; }
+.t-ink { color: var(--ink); }
+.asof { font-size: 12px; font-weight: 600; color: var(--ink-3); margin-left: 5px; }
+.card .live { padding: 8px 10px; font-size: 15px; }
+.cell .v.sch { font-size: 18px; line-height: 1.5; white-space: normal; display: flex; flex-direction: column; }
+.sch .sl i { font-style: normal; font-size: 14px; font-weight: 700; color: var(--ink-3); margin: 0 4px 0 0; }
+.sch .sl b { font-size: 22px; }
+.sch .sl small { font-size: 14px; color: var(--ink-3); font-weight: 600; margin-left: 4px; }

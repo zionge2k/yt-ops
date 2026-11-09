@@ -89,7 +89,7 @@ def _reach_rows():
 ROWS = {
     "yt_channel_daily": _daily(),
     "yt_subs_snapshot": [{"channel_key": "soombi", "taken_on": date(2026, 11, 6),
-                          "api_subscribers": 900, "exact_subscribers": 905, "monetized": False},
+                          "api_subscribers": 905, "exact_subscribers": 900, "monetized": False},
                          {"channel_key": "a2p", "taken_on": date(2026, 11, 6),
                           "api_subscribers": 1200, "exact_subscribers": None, "monetized": True}],
     "yt_live_snapshot": [
@@ -145,6 +145,8 @@ ROWS = {
                          {"playlist_id": "p2", "video_id": "A1", "channel_key": "soombi"}],
     "yt_audience": _audience_rows(),
     "yt_reach_daily": _reach_rows(),
+    "yt_schedule": [{"channel_key": "soombi", "publish_at": datetime(2026, 11, 12, 11, 0, tzinfo=timezone.utc), "content_kind": "long"},
+                    {"channel_key": "soombi", "publish_at": datetime(2026, 11, 20, 11, 0, tzinfo=timezone.utc), "content_kind": "short"}],
 }
 
 
@@ -187,8 +189,8 @@ def test_v3_top_level_shape(monkeypatch):
 
 def test_board_h48_and_subscribers(monkeypatch):
     b = _build(monkeypatch)["board"]["soombi"]
-    assert set(b) == {"subscribers", "subscribers_approx", "h48", "live", "health", "monet", "reach7"}
-    assert b["subscribers"] == 905 and b["subscribers_approx"] is False  # exact (905) above the api value (900)
+    assert set(b) == {"subscribers", "subscribers_approx", "h48", "live", "health", "monet", "reach7", "schedule", "as_of"}
+    assert b["subscribers"] == 905 and b["subscribers_approx"] is False  # below 1,000 the live api value is exact and wins over the older reconstruction (900)
     # 11-03 (1.0h) + 11-04 (2.0h) = 3.0 vs 11-01 + 11-02 = 4.0 -> -25%
     assert b["h48"] == {"cur": 3.0, "prev": 4.0, "pct": -25.0, "status": "blue", "days": ["2026-11-03", "2026-11-04"]}
     a2p = _build(monkeypatch)["board"]["a2p"]
@@ -745,10 +747,10 @@ def test_board_reach7_has_the_numbers_and_the_baseline_comparison(monkeypatch):
                       "window_days"}
     # the window ends at the newest reach day (11-03), not at the channel feed's latest day (11-04)
     assert r["as_of"] == "2026-11-03"
-    assert r["impressions"] == 28514 and r["ctr"] == pytest.approx(0.04377, abs=1e-5)
-    # 28,514 / 7 days against the 1,000 a day of the four weeks before
-    assert r["impressions_pct"] == 307.3 and r["ctr_pp"] == 0.38
-    assert r["impressions_status"] == "red" and r["ctr_status"] == "red"
+    assert r["impressions"] == 25014 and r["ctr"] == pytest.approx(0.0387, abs=1e-5)
+    # 25,014 / 7 days against the 1,000 a day of the four weeks before
+    assert r["impressions_pct"] == 257.3 and r["ctr_pp"] == -0.13
+    assert r["impressions_status"] == "red" and r["ctr_status"] == "purple"
 
 
 def test_board_reach7_without_a_baseline_keeps_the_numbers(monkeypatch):
@@ -775,10 +777,10 @@ def test_detail_reach_summary(monkeypatch):
     assert set(d) == {"days", "impressions", "ctr", "impressions_pct", "ctr_pp", "impressions_status", "ctr_status",
                       "as_of", "window_days", "this_week", "all", "shorts_ctr", "long_ctr"}
     assert d["days"] == 28 and d["window_days"] == 28 and d["as_of"] == "2026-11-03"
-    assert d["impressions"] == 49514 and d["ctr"] == pytest.approx(0.04217, abs=1e-5)
-    # 49,514 / 28 days against the 28,000 / 28 days of the 28 days before
-    assert d["impressions_pct"] == 76.8 and d["ctr_pp"] == 0.22
-    assert d["impressions_status"] == "red" and d["ctr_status"] == "red"
+    assert d["impressions"] == 46014 and d["ctr"] == pytest.approx(0.03929, abs=1e-5)
+    # 46,014 / 28 days against the 28,000 / 28 days of the 28 days before
+    assert d["impressions_pct"] == 64.3 and d["ctr_pp"] == -0.07
+    assert d["impressions_status"] == "red" and d["ctr_status"] == "purple"
     assert d["shorts_ctr"] == 0.08
     assert d["long_ctr"] == pytest.approx(0.03878, abs=1e-5)   # V_GHOST has no kind: in neither group
 

@@ -189,13 +189,39 @@ function refreshButton() {
   return `<button type="button" class="refresh" id="refresh"${rf.disabled ? " disabled" : ""}>${esc(rf.text)}</button>`;
 }
 
+/** The time most numbers were collected (daily run); falls back to the render time. */
+const baseAt = () => DATA.last_daily_ok_at || DATA.generated_at;
+const sameDay = (a, b) => !a || !b || kst(a).month + "/" + kst(a).day === kst(b).month + "/" + kst(b).day;
+/** Small note beside a figure whose reference day differs from the page's base day. */
+const asOf = (d, suffix) => (!d || sameDay(d + "T12:00:00+09:00", baseAt())) ? "" : `<span class="asof n">${ymd(d)}${suffix === undefined ? " 기준" : suffix}</span>`;
+const tone = (p, monetized) => monetized ? "red" : isNull(p) ? "grey" : p >= 70 ? "red" : p < 30 ? "blue" : "purple";
+
+/** One compact cell: small label, one big figure (colored), optional small note. */
+const cell = (label, val, t, note) => `<div class="cell"><span class="k">${label}</span><span class="v n t-${t || "ink"}">${val}${note ? `<small class="n">${note}</small>` : ""}</span></div>`;
+
+function compactCard(ch, b) {
+  const m = b.monet || {}, a = b.as_of || {}, h = b.h48 || {}, s = b.schedule, r = b.reach7;
+  const subT = tone(m.subs_pct, m.monetized), hrT = tone(m.hours_pct, m.monetized);
+  const one = (label, x) => `<span class="sl"><i>${label}</i> <b class="t-${x.status}">${fmt(x.n)}</b>${x.n ? `<small>(${ymd(x.last)}까지)</small>` : ""}</span>`;
+  const sch = s ? one("롱폼", s.long) + one("쇼츠", s.short) : "—";
+  const reachOk = r && !r.stale;
+  return `<div class="cells">
+    ${cell("구독자", fmt(m.subs), subT, b.subscribers_approx ? "≈" : "")}
+    ${cell("시간" + asOf(a.hours, ""), fmt(m.hours), hrT)}
+    ${cell("48시간" + asOf(a.h48, ""), isNull(h.cur) ? "—" : fmt(h.cur, 0), h.status || "grey", isNull(h.pct) ? "" : pct(h.pct))}
+    <div class="cell"><span class="k">예약현황</span><span class="v sch n">${sch}</span></div>
+    ${cell("노출률", reachOk ? bigNum(r.impressions) : "—", reachOk ? r.impressions_status : "grey")}
+    ${cell("클릭률", reachOk ? ctrNum(r.ctr) : "—", reachOk ? r.ctr_status : "grey")}
+  </div>`;
+}
+
 function renderTop(view) {
   const tabs = [["board", "현황판"], ["subs", "구독자"], ["watch", "시청시간"], ["api", "API"]]
     .map(([k, t]) => `<a href="#${k}" ${view === k ? 'aria-current="page"' : ""}>${t}</a>`).join("");
   return `<header class="top">
     <h1>유튜브 상황판</h1>
     <nav class="tabs" aria-label="화면">${tabs}</nav>
-    <div class="meta n"><span>생성 ${mdhm(DATA.generated_at)} · 기준일 ${ymd(DATA.latest_day)} · 지연 ${fmt(DATA.lag_days)}일</span>${refreshButton()}</div>
+    <div class="meta n"><span>${mdhm(baseAt())} 수집 기준 · 분석 확정 ${ymd(DATA.latest_day)}까지</span>${refreshButton()}</div>
   </header>`;
 }
 
@@ -253,9 +279,7 @@ function renderBoard() {
     }
     const h = b.h48 || {};
     return `<article class="card h-${esc(b.health || "grey")}">${head}
-      <div class="stat"><span class="k">구독자</span><span class="num n"${b.subscribers_approx ? ' title="유튜브가 세 자리까지만 알려 줘요 · 정확한 값은 2~3일 뒤"' : ""}>${b.subscribers_approx ? "≈ " : ""}${fmt(b.subscribers)}</span></div>
-      <div class="stat"><span class="k">48시간 유효시청</span><span class="num n">${fmt(h.cur, 1)}${isNull(h.cur) ? "" : "<small>시간</small>"}</span><span class="chg n t-${esc(h.status || "grey")}">${pct(h.pct)}</span></div>
-      ${reachStats(b.reach7)}
+      ${compactCard(ch, b)}
       ${liveBlock(ch, b)}
     </article>`;
   }).join("");

@@ -181,6 +181,26 @@ def health_of(monet: dict) -> str:
     return "red" if score >= 70 else "blue" if score < 30 else "purple"
 
 
+# Runway of scheduled uploads: days from today to the last scheduled publish. >= RED_DAYS red, < BLUE_DAYS blue.
+SCHEDULE_RED_DAYS, SCHEDULE_BLUE_DAYS = 7, 3
+
+
+def _schedule_summary(rows, now) -> dict:
+    """Per kind (long / short): how many are scheduled, the next publish time and how many days ahead the last one is."""
+    today = now.astimezone(KST).date()
+    out = {}
+    for kind in ("long", "short"):
+        mine = sorted((r["publish_at"] for r in rows if r.get("content_kind") == kind and r.get("publish_at")
+                       and r["publish_at"] >= now))
+        if not mine:
+            out[kind] = {"n": 0, "next": None, "last": None, "ahead_days": 0, "status": "blue"}
+            continue
+        ahead = (mine[-1].astimezone(KST).date() - today).days
+        out[kind] = {"n": len(mine), "next": mine[0], "last": mine[-1], "ahead_days": ahead,
+                     "status": "red" if ahead >= SCHEDULE_RED_DAYS else "blue" if ahead < SCHEDULE_BLUE_DAYS else "purple"}
+    return out
+
+
 def _pct_of(value, goal):
     return None if value is None else min(round(value / goal * 100, 1), 100.0)
 
@@ -192,6 +212,8 @@ def _best_subscribers(snapshot) -> tuple[int | None, bool]:
     if snapshot is None:
         return None, False
     exact, api = snapshot.get("exact_subscribers"), snapshot.get("api_subscribers")
+    if api is not None and api < 1000:
+        return api, False  # below 1,000 the API value is exact and live; Analytics lags ~3 days
     if exact is None:
         return api, api is not None and api >= 1000
     if api is not None and api > exact:
@@ -556,6 +578,9 @@ def build(conn, *, today: date, config, now: datetime | None = None, quota: dict
     reach_rows = _safe_fetch(conn, "select * from yt_reach_daily where day >= %s",
                              (latest - timedelta(days=REACH_FETCH_DAYS),), problems=problems) if latest else []
 
+    schedule_rows = _safe_fetch(conn, "select channel_key, publish_at, content_kind from yt_schedule",
+                                (), problems=problems)
+
     out_channels, board, subs_trend, watch_trend, detail = [], {}, {}, {}, {}
     errors: list[dict] = []
     for k in keys:
@@ -572,6 +597,8 @@ def build(conn, *, today: date, config, now: datetime | None = None, quota: dict
         # a channel behind the global latest day (or whose collection failed) gets no comparison
         comparable = not failed and ch_latest[k] is not None and ch_latest[k] >= (latest or ch_latest[k])
         ch_reach = [r for r in reach_rows if r["channel_key"] == k]
+        # the headline impressions / ctr count long videos and live archives only; shorts distort both
+        ch_reach_nos = [r for r in ch_reach if (videos.get(r["video_id"]) or {}).get("content_kind") != "short"]
         reach_end = _reach_latest_day(ch_reach)  # each channel's own newest report day, not the channel feed's
         reach_stale = (reach_end is not None and latest is not None
                        and reach_end < latest - timedelta(days=REACH_STALE_DAYS))
@@ -583,8 +610,11 @@ def build(conn, *, today: date, config, now: datetime | None = None, quota: dict
             "live": _live_state([r for r in live_rows if r["channel_key"] == k], now, _live_run(runs, k)) if ch.is_live else None,
             "health": health_of(monet),
             "monet": monet,
+            "schedule": _schedule_summary([r for r in schedule_rows if r["channel_key"] == k], now),
+            "as_of": {"subs": (s.get("taken_on") if subs_n is not None and subs_n == s.get("api_subscribers") else ch_latest[k]) if s else ch_latest[k],
+                      "hours": ch_latest[k], "h48": ch_latest[k]},
             "reach7": (stale_reach if reach_stale else
-                       _reach_summary(ch_reach, reach_end, REACH_BOARD_DAYS, up, down) if reach_end else None),
+                       _reach_summary(ch_reach_nos, reach_end, REACH_BOARD_DAYS, up, down) if reach_end else None),
         }
         subs_trend[k] = _subs_trend(by_day, latest, first_day[k], subs_n, up, down)
         watch_trend[k] = _watch_trend(by_day, latest, first_day[k], up, down)
@@ -598,7 +628,8 @@ def build(conn, *, today: date, config, now: datetime | None = None, quota: dict
             "subs_sources": _subs_sources(recent_daily),
             "genres": _genres(per_video, videos, playlists, [i for i in items if i["channel_key"] == k]),
             "reach": (stale_reach if reach_stale else
-                      _reach_detail(ch_reach, reach_end, k, videos, per_video, up, down) if reach_end else None),
+                      {**_reach_detail(ch_reach, reach_end, k, videos, per_video, up, down),
+                       **_reach_summary(ch_reach_nos, reach_end, REACH_WINDOW_DAYS, up, down)} if reach_end else None),
         }
 
     # Render-side read failures are shown on the page but are not collect failures (channels untouched).
