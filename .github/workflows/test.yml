@@ -37,5 +37,7 @@ jobs:
 
       - run: node --test tests/test_site_refresh.mjs
 
+      - run: node --test tests/test_site_reach.mjs
+
       - run: node --test
         working-directory: refresh

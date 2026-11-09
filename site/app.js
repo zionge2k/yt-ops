@@ -198,6 +198,26 @@ function renderTop(view) {
   </header>`;
 }
 
+// ---------- thumbnail reach ----------
+// Numbers from data.json: ctr is a 0..1 ratio, *_pct is a percent change, ctr_pp is in percentage points.
+/** [text, unit]: 10,000 and up scale to 만 (123,456 -> ["12.3", "만"]), smaller numbers stay whole. */
+const bigParts = (n) => isNull(n) ? ["—", ""] : n >= 10000 ? [fmt(n / 10000, 1), "만"] : [fmt(n), ""];
+const big = (n) => bigParts(n).join("");
+const bigNum = (n) => { const [t, u] = bigParts(n); return u ? `${t}<small>${u}</small>` : t; };
+const ctrText = (r) => isNull(r) ? "—" : `${fmt(r * 100, 1)}%`;
+const ctrNum = (r) => isNull(r) ? "—" : `${fmt(r * 100, 1)}<small>%</small>`;
+const arrowed = (v, d, unit) => `${v > 0 ? "▲ " : v < 0 ? "▼ " : ""}${fmt(Math.abs(v), d)}${unit}`;
+const pctChg = (v) => isNull(v) ? "—" : arrowed(v, Math.abs(v) < 10 ? 1 : 0, "%");
+const ppChg = (v) => isNull(v) ? "—" : arrowed(v, 1, "%p");
+
+function reachStats(r) {
+  if (!r) return `<div class="stat"><span class="k">7일 썸네일 노출</span><span class="num n">—</span></div>
+      <div class="stat"><span class="k">7일 클릭률</span><span class="num n">—</span></div>
+      <div class="note-grey">보고서 쌓이는 중</div>`;
+  return `<div class="stat"><span class="k">7일 썸네일 노출</span><span class="num n">${bigNum(r.impressions)}</span><span class="chg n t-${esc(r.impressions_status || "grey")}">${pctChg(r.impressions_pct)}</span></div>
+      <div class="stat"><span class="k">7일 클릭률</span><span class="num n">${ctrNum(r.ctr)}</span><span class="chg n t-${esc(r.ctr_status || "grey")}">${ppChg(r.ctr_pp)}</span></div>`;
+}
+
 // ---------- #board ----------
 /** Snapshot time for the live block; a channel with no snapshot has taken_at null (never new Date(null)). */
 const liveAt = (l) => `<span class="at n">${isNull(l.taken_at) ? "기록 없음" : mdhm(l.taken_at)}</span>`;
@@ -229,6 +249,7 @@ function renderBoard() {
     return `<article class="card h-${esc(b.health || "grey")}">${head}
       <div class="stat"><span class="k">구독자</span><span class="num n"${b.subscribers_approx ? ' title="유튜브가 세 자리까지만 알려 줘요 · 정확한 값은 2~3일 뒤"' : ""}>${b.subscribers_approx ? "≈ " : ""}${fmt(b.subscribers)}</span></div>
       <div class="stat"><span class="k">48시간 유효시청</span><span class="num n">${fmt(h.cur, 1)}${isNull(h.cur) ? "" : "<small>시간</small>"}</span><span class="chg n t-${esc(h.status || "grey")}">${pct(h.pct)}</span></div>
+      ${reachStats(b.reach7)}
       ${liveBlock(ch, b)}
     </article>`;
   }).join("");
@@ -286,6 +307,42 @@ function videoList(title, list) {
   return `<section class="panel"><h3>${title}<span class="asof">28일</span></h3>${items ? `<ul class="vids">${items}</ul>` : `<div class="nochart">—</div>`}</section>`;
 }
 
+const VERDICT = {
+  fix: ["t-red", "노출 많은데 클릭 적음 → 썸네일·제목 바꿔 볼 후보"],
+  push: ["t-purple", "클릭률 높은데 노출 적음 → 다시 밀어 볼 후보"],
+  ok: ["muted", "괜찮아요"],
+};
+const REACH_WAITING = "보고서 쌓이는 중 · 유튜브가 하루 한 번 내놓아요";
+
+function reachTable(rows) {
+  const body = rows.map((v) => {
+    const [cls, text] = VERDICT[v.verdict] || ["", ""];
+    return `<tr><td>${esc(v.title || v.video_id)}${v.kind === "short" ? ` <span class="tag t-grey">쇼츠</span>` : ""}</td><td class="n">${ymd(v.published_at)}</td><td class="n">${big(v.impressions)}</td><td class="n">${ctrText(v.ctr)}</td><td class="n">${fmt(v.views)}</td><td${cls ? ` class="${cls}"` : ""}>${text}</td></tr>`;
+  }).join("");
+  return `<div class="reach-wrap"><table class="reach"><thead><tr><th>영상</th><th>올린 날</th><th class="n">노출</th><th class="n">클릭률</th><th class="n">조회</th><th>한마디</th></tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+function reachPanel(r) {
+  if (!r) return `<section class="panel"><h3>썸네일 성적</h3><p class="note-grey">${REACH_WAITING}</p></section>`;
+  const week = r.this_week || [], all = r.all || [];
+  return `<section class="panel"><h3>썸네일 성적<span class="asof">${fmt(r.days)}일</span></h3>
+    <div class="sumrow">
+      <div class="stat"><span class="k">${fmt(r.days)}일 노출 합계</span><span class="num n">${bigNum(r.impressions)}</span><span class="chg n t-${esc(r.impressions_status || "grey")}">${pctChg(r.impressions_pct)}</span></div>
+      <div class="stat"><span class="k">채널 클릭률</span><span class="num n">${ctrNum(r.ctr)}</span><span class="chg n t-${esc(r.ctr_status || "grey")}">${ppChg(r.ctr_pp)}</span></div>
+    </div>
+    <h4 class="sub">이번 주 올린 영상 · ${fmt(week.length)}편</h4>
+    ${week.length ? reachTable(week) : `<p class="note-grey">이번 주 올린 영상 없음</p>`}
+    <h4 class="sub">지난 ${fmt(r.days)}일 전체 · 노출 많은 순</h4>
+    ${all.length ? reachTable(all) : `<p class="note-grey">노출된 영상 없음</p>`}
+    <p class="qwhen n">클릭률 = 썸네일을 본 사람 중 누른 비율 · 채널 클릭률은 총 클릭 ÷ 총 노출 · 유튜브가 2~3일 늦게 줘요</p></section>`;
+}
+
+function shortsLongPanel(r) {
+  if (!r) return "";
+  const rows = [["쇼츠", r.shorts_ctr], ["롱폼", r.long_ctr]].map(([label, v]) => ({ label, value: v, text: ctrText(v) }));
+  return `<section class="panel"><h3>쇼츠 vs 롱폼 클릭률<span class="asof">${fmt(r.days)}일</span></h3>${hbars(rows, "purple")}</section>`;
+}
+
 function renderChannel(key) {
   const ch = DATA.channels.find((c) => c.key === key);
   const d = DATA.detail[key];
@@ -304,6 +361,8 @@ function renderChannel(key) {
   const genres = (d.genres || []).slice(0, 5).map((g) => ({ label: g.name, value: g.hours, text: `≈ ${fmt(g.hours, 1)}시간 · ${fmt(g.share, 0)}%` }));
   return `${back}<h2 class="chname">${esc(ch.display)}</h2><div class="stack">
     ${monet}
+    ${reachPanel(d.reach)}
+    ${shortsLongPanel(d.reach)}
     ${audienceBlock("구독자 현황", aud.subscribers || {})}
     ${audienceBlock("시청자 현황", aud.viewers || {})}
     ${videoList("롱폼 상위 3", d.top_long)}
