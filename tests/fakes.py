@@ -37,6 +37,8 @@ class _Resource:
     def __getattr__(self, method: str):
         def call(**kwargs):
             path = f"{self._name}.{method}"
+            if path not in self._svc.queues and any(q.startswith(path + ".") for q in self._svc.queues):
+                return _Resource(self._svc, path)  # intermediate resource such as jobs().reports()
             self._svc.calls.append((path, kwargs))
             return _Request(self._svc.queues[path])
         return call
@@ -44,7 +46,7 @@ class _Resource:
 
 class FakeService:
     def __init__(self, **queues: list):
-        # keys like reports__query -> "reports.query"
+        # keys like reports__query -> "reports.query"; jobs__reports__list -> jobs().reports().list()
         self.queues = {k.replace("__", "."): list(v) for k, v in queues.items()}
         self.calls: list[tuple[str, dict]] = []
 

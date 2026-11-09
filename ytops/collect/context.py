@@ -7,6 +7,7 @@ from datetime import date, datetime
 from ytops.analytics import AnalyticsClient
 from ytops.data import DataClient
 from ytops.registry import Channel
+from ytops.reporting import ReportingClient
 
 
 @dataclass
@@ -17,3 +18,4 @@ class CollectContext:
     data: DataClient
     today: date
     collected_at: datetime
+    reporting: ReportingClient | None = None  # built only for runs that include the reach collector

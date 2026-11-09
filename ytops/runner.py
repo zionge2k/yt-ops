@@ -16,6 +16,7 @@ from ytops.collect.context import CollectContext
 from ytops.data import CallMeter, ProjectBudgetExceeded
 from ytops.data import for_key as data_for_key
 from ytops.registry import load_channels, load_projects
+from ytops.reporting import for_key as reporting_for_key
 
 PRIMARY_KEYS: dict[str, list[str]] = {
     "yt_channel_daily": ["channel_key", "day"],
@@ -152,6 +153,7 @@ def run_collect(
         keys = [k for k in keys if channels[k].is_live]
     days_seen: list[date] = []
     db = None if dry_run else conn
+    wants_reach = any(n == "reach" for n, _ in collectors)  # other runs never touch the Reporting API
 
     for key in keys:
         collected: dict[str, list[dict]] = {}
@@ -168,7 +170,14 @@ def run_collect(
         except Exception as e:  # auth / registry failure: skip this channel only
             result.errors.append(_error(key, "client", e))
             continue
+        if wants_reach:
+            try:
+                ctx.reporting = reporting_for_key(key)
+            except Exception as e:  # not a "client" failure: only the reach numbers go missing, the card stays
+                result.errors.append(_error(key, "reach", e))
         for name, module in collectors:
+            if name == "reach" and ctx.reporting is None:
+                continue  # building the client failed above and is already recorded
             try:
                 out = _run_collector(name, module, ctx, start, end, video_start, db, collected.get("yt_channel_daily", ()))
             except Exception as e:
