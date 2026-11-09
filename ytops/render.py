@@ -29,7 +29,10 @@ REACH_BASELINE_MIN_DAYS = 7  # fewer days of data in the comparison stretch is n
 REACH_TOP_N = 12
 # Verdict on a video (channel 28-day ctr c, median impressions m of its videos): a video is judged only once
 # it has had a week and 100 impressions; "fix" = shown a lot, clicked little; "push" = clicked a lot, shown little.
-REACH_MIN_AGE_DAYS, REACH_MIN_IMPRESSIONS = 7, 100
+# 500 because the sampling error of a ctr over 100 impressions is about +-2pp, which flips a verdict on one click.
+REACH_MIN_AGE_DAYS, REACH_MIN_IMPRESSIONS = 7, 500
+# A channel whose newest report day trails the channel feed by more than this is shown as "stopped", not as current.
+REACH_STALE_DAYS = 5
 REACH_FIX_CTR_RATIO = 0.67
 REACH_PUSH_CTR_RATIO, REACH_PUSH_IMPRESSIONS_RATIO = 1.5, 0.5
 
@@ -421,25 +424,30 @@ def _reach_summary(rows, end, days, up, down) -> dict:
     """Impressions and ctr of the window ending at `end`, judged against the stretch just before it.
 
     The stretch is periods.compare_window (at least 28 days: a short window is compared with a multi-week
-    average, not one noisy week). Both sides are compared per day with data, so a window YouTube has only half
-    filled yet does not read as a drop; a stretch with under a week of data gives no comparison at all.
+    average, not one noisy week). Both sides are compared per calendar day (days without a row count as zero
+    impressions, which is how the report omits them), limited to the days since the channel's first report day;
+    `window_days` is that real length of the window (below `days` only in the first weeks). A stretch with under
+    a week of data gives no comparison at all.
     impressions_pct is a percent change; ctr_pp is in percentage points; the statuses colour them like h48
     (rising red, falling blue). ctr is a 0..1 ratio, as stored.
     """
     cur_i, cur_c = _reach_window(rows, end, days)
-    cur_days = len({r["day"] for r in _in_window(rows, end, days)})
+    first = min((r["day"] for r in rows), default=end)
+    cur_start, _ = periods.window(end, days)
+    window_days = (end - max(cur_start, first)).days + 1
     prev_start, prev_end = periods.compare_window(periods.window(end, days))
     prev_len = (prev_end - prev_start).days + 1
     prev_i, prev_c = _reach_window(rows, prev_end, prev_len)
-    prev_days = len({r["day"] for r in _in_window(rows, prev_end, prev_len)})
-    comparable = cur_days > 0 and prev_days >= REACH_BASELINE_MIN_DAYS
-    pct = (periods.pct_change(cur_i / cur_days, prev_i / prev_days)
+    prev_days = max(0, (prev_end - max(prev_start, first)).days + 1)  # calendar days with history behind them
+    prev_data_days = len({r["day"] for r in _in_window(rows, prev_end, prev_len)})
+    comparable = prev_data_days >= REACH_BASELINE_MIN_DAYS and prev_days > 0
+    pct = (periods.pct_change(cur_i / window_days, prev_i / prev_days)
            if comparable and cur_i is not None and prev_i is not None else None)
     ctr_pct = periods.pct_change(cur_c, prev_c) if comparable else None
     ctr_pp = round((cur_c - prev_c) * 100, 2) if comparable and cur_c is not None and prev_c is not None else None
     return {"impressions": cur_i, "ctr": _round(cur_c, 5), "impressions_pct": pct, "ctr_pp": ctr_pp,
             "impressions_status": periods.color_of(pct, up, down), "ctr_status": periods.color_of(ctr_pct, up, down),
-            "as_of": end}
+            "as_of": end, "window_days": window_days}
 
 
 def _reach_verdict(impressions, ctr, age_days, channel_ctr, median_impressions) -> str | None:
@@ -448,8 +456,8 @@ def _reach_verdict(impressions, ctr, age_days, channel_ctr, median_impressions) 
         return None
     if impressions is None or ctr is None or impressions < REACH_MIN_IMPRESSIONS:
         return None
-    if channel_ctr is None or median_impressions is None:
-        return None
+    if channel_ctr is None or channel_ctr <= 0 or median_impressions is None:
+        return None  # no clicks on the whole channel: there is no baseline to be above or below
     if ctr <= REACH_FIX_CTR_RATIO * channel_ctr and impressions >= median_impressions:
         return "fix"
     if ctr >= REACH_PUSH_CTR_RATIO * channel_ctr and impressions <= REACH_PUSH_IMPRESSIONS_RATIO * median_impressions:
@@ -565,6 +573,9 @@ def build(conn, *, today: date, config, now: datetime | None = None, quota: dict
         comparable = not failed and ch_latest[k] is not None and ch_latest[k] >= (latest or ch_latest[k])
         ch_reach = [r for r in reach_rows if r["channel_key"] == k]
         reach_end = _reach_latest_day(ch_reach)  # each channel's own newest report day, not the channel feed's
+        reach_stale = (reach_end is not None and latest is not None
+                       and reach_end < latest - timedelta(days=REACH_STALE_DAYS))
+        stale_reach = {"stale": True, "as_of": reach_end}
         board[k] = {
             "subscribers": subs_n,
             "subscribers_approx": subs_approx,
@@ -572,7 +583,8 @@ def build(conn, *, today: date, config, now: datetime | None = None, quota: dict
             "live": _live_state([r for r in live_rows if r["channel_key"] == k], now, _live_run(runs, k)) if ch.is_live else None,
             "health": health_of(monet),
             "monet": monet,
-            "reach7": _reach_summary(ch_reach, reach_end, REACH_BOARD_DAYS, up, down) if reach_end else None,
+            "reach7": (stale_reach if reach_stale else
+                       _reach_summary(ch_reach, reach_end, REACH_BOARD_DAYS, up, down) if reach_end else None),
         }
         subs_trend[k] = _subs_trend(by_day, latest, first_day[k], subs_n, up, down)
         watch_trend[k] = _watch_trend(by_day, latest, first_day[k], up, down)
@@ -585,7 +597,8 @@ def build(conn, *, today: date, config, now: datetime | None = None, quota: dict
             "top_live": _top(per_video, videos, "live_archive"),
             "subs_sources": _subs_sources(recent_daily),
             "genres": _genres(per_video, videos, playlists, [i for i in items if i["channel_key"] == k]),
-            "reach": _reach_detail(ch_reach, reach_end, k, videos, per_video, up, down) if reach_end else None,
+            "reach": (stale_reach if reach_stale else
+                      _reach_detail(ch_reach, reach_end, k, videos, per_video, up, down) if reach_end else None),
         }
 
     # Render-side read failures are shown on the page but are not collect failures (channels untouched).

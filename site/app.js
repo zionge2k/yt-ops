@@ -211,12 +211,17 @@ const arrowed = (v, d, unit) => `${v > 0 ? "▲ " : v < 0 ? "▼ " : ""}${fmt(Ma
 const pctChg = (v) => isNull(v) ? "—" : arrowed(v, Math.abs(v) < 10 ? 1 : 0, "%");
 const ppChg = (v) => isNull(v) ? "—" : arrowed(v, 1, "%p");
 
+/** Sentence for a reach feed whose newest report day trails the channel feed (render marks it {stale, as_of}). */
+const reachStopped = (r) => `보고서가 멈췄어요 · 마지막 ${ymd(r.as_of)}`;
+
 function reachStats(r) {
-  if (!r) return `<div class="stat"><span class="k">7일 썸네일 노출</span><span class="num n">—</span></div>
+  if (!r || r.stale) return `<div class="stat"><span class="k">7일 썸네일 노출</span><span class="num n">—</span></div>
       <div class="stat"><span class="k">7일 클릭률</span><span class="num n">—</span></div>
-      <div class="note-grey">보고서 쌓이는 중</div>`;
-  return `<div class="stat"><span class="k">7일 썸네일 노출</span><span class="num n">${bigNum(r.impressions)}</span><span class="chg n t-${esc(r.impressions_status || "grey")}">${pctChg(r.impressions_pct)}</span></div>
-      <div class="stat"><span class="k">7일 클릭률</span><span class="num n">${ctrNum(r.ctr)}</span><span class="chg n t-${esc(r.ctr_status || "grey")}">${ppChg(r.ctr_pp)}</span></div>`;
+      <div class="note-grey">${r ? reachStopped(r) : "보고서 쌓이는 중"}</div>`;
+  // window_days is below 7 only in the first days after launch: say how many days the numbers really cover
+  const n = isNull(r.window_days) ? 7 : Math.min(7, r.window_days);
+  return `<div class="stat"><span class="k">${n}일 썸네일 노출 · ~${ymd(r.as_of)}</span><span class="num n">${bigNum(r.impressions)}</span><span class="chg n t-${esc(r.impressions_status || "grey")}">${pctChg(r.impressions_pct)}</span></div>
+      <div class="stat"><span class="k">${n}일 클릭률</span><span class="num n">${ctrNum(r.ctr)}</span><span class="chg n t-${esc(r.ctr_status || "grey")}">${ppChg(r.ctr_pp)}</span></div>`;
 }
 
 // ---------- #board ----------
@@ -325,10 +330,12 @@ function reachTable(rows) {
 
 function reachPanel(r) {
   if (!r) return `<section class="panel"><h3>썸네일 성적</h3><p class="note-grey">${REACH_WAITING}</p></section>`;
+  if (r.stale) return `<section class="panel"><h3>썸네일 성적</h3><p class="note-grey">${reachStopped(r)}</p></section>`;
   const week = r.this_week || [], all = r.all || [];
-  return `<section class="panel"><h3>썸네일 성적<span class="asof">${fmt(r.days)}일</span></h3>
+  const n = isNull(r.window_days) ? r.days : Math.min(r.days, r.window_days);
+  return `<section class="panel"><h3>썸네일 성적<span class="asof">${fmt(n)}일 · ${ymd(r.as_of)}까지</span></h3>
     <div class="sumrow">
-      <div class="stat"><span class="k">${fmt(r.days)}일 노출 합계</span><span class="num n">${bigNum(r.impressions)}</span><span class="chg n t-${esc(r.impressions_status || "grey")}">${pctChg(r.impressions_pct)}</span></div>
+      <div class="stat"><span class="k">${fmt(n)}일 노출 합계</span><span class="num n">${bigNum(r.impressions)}</span><span class="chg n t-${esc(r.impressions_status || "grey")}">${pctChg(r.impressions_pct)}</span></div>
       <div class="stat"><span class="k">채널 클릭률</span><span class="num n">${ctrNum(r.ctr)}</span><span class="chg n t-${esc(r.ctr_status || "grey")}">${ppChg(r.ctr_pp)}</span></div>
     </div>
     <h4 class="sub">이번 주 올린 영상 · ${fmt(week.length)}편</h4>
@@ -339,7 +346,7 @@ function reachPanel(r) {
 }
 
 function shortsLongPanel(r) {
-  if (!r) return "";
+  if (!r || r.stale) return "";
   const rows = [["쇼츠", r.shorts_ctr], ["롱폼", r.long_ctr]].map(([label, v]) => ({ label, value: v, text: ctrText(v) }));
   return `<section class="panel"><h3>쇼츠 vs 롱폼 클릭률<span class="asof">${fmt(r.days)}일</span></h3>${hbars(rows, "purple")}</section>`;
 }

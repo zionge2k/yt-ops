@@ -38,7 +38,7 @@ test("sample.json: two board entries carry reach7, one of them null", () => {
   assert.equal(nulls.length, 1);
   const filled = withKey.find(([, b]) => b.reach7 !== null)[1].reach7;
   assert.deepEqual(Object.keys(filled).sort(),
-    ["as_of", "ctr", "ctr_pp", "ctr_status", "impressions", "impressions_pct", "impressions_status"]);
+    ["as_of", "ctr", "ctr_pp", "ctr_status", "impressions", "impressions_pct", "impressions_status", "window_days"]);
 });
 
 test("sample.json: one channel has detail.reach with the row shape the renderer reads", () => {
@@ -46,7 +46,7 @@ test("sample.json: one channel has detail.reach with the row shape the renderer 
   assert.equal(withReach.length, 1);
   const r = withReach[0][1].reach;
   assert.equal(r.days, 28);
-  for (const k of ["impressions", "ctr", "impressions_pct", "ctr_pp", "impressions_status", "ctr_status", "as_of",
+  for (const k of ["impressions", "ctr", "impressions_pct", "ctr_pp", "impressions_status", "ctr_status", "as_of", "window_days",
     "this_week", "all", "shorts_ctr", "long_ctr"]) assert.ok(k in r, k);
   assert.ok(r.this_week.length > 0 && r.all.length > 0 && r.all.length <= 12);
   for (const row of [...r.this_week, ...r.all]) assert.deepEqual(Object.keys(row).sort(), [...ROW_KEYS].sort());
@@ -64,6 +64,40 @@ test("board card shows the 7-day impressions and ctr after the 48-hour line", ()
   assert.ok(html.includes('<span class="num n">12.3<small>만</small></span><span class="chg n t-red">▲ 18%</span>'));
   assert.ok(html.includes('<span class="num n">4.1<small>%</small></span><span class="chg n t-blue">▼ 1.2%p</span>'));
   assert.ok(!html.includes("보고서 쌓이는 중"));
+});
+
+test("board card: the label says up to which day the 7 days run", () => {
+  const html = card(board(), "숨비찰나");
+  assert.ok(html.includes('<span class="k">7일 썸네일 노출 · ~11/3</span>'));
+  assert.ok(html.includes('<span class="k">7일 클릭률</span>'));
+});
+
+test("board card: a window shorter than 7 days at launch says the real number of days", () => {
+  const data = clone();
+  data.board.soombi.reach7.window_days = 3;
+  const html = card(board(data), "숨비찰나");
+  assert.ok(html.includes("3일 썸네일 노출 · ~11/3") && html.includes('<span class="k">3일 클릭률</span>'));
+  assert.ok(!html.includes("7일 썸네일 노출"));
+});
+
+test("a stopped reach feed shows dashes and the last day, on the card and in the detail", () => {
+  const data = clone();
+  data.board.soombi.reach7 = { stale: true, as_of: "2026-10-01" };
+  data.detail.soombi.reach = { stale: true, as_of: "2026-10-01" };
+  const html = card(board(data), "숨비찰나");
+  assert.ok(html.includes('<span class="k">7일 썸네일 노출</span><span class="num n">—</span></div>'));
+  assert.ok(html.includes('<div class="note-grey">보고서가 멈췄어요 · 마지막 10/1</div>'));
+  assert.ok(!html.includes("보고서 쌓이는 중") && !html.includes("NaN") && !html.includes("undefined"));
+  const detail = channel("soombi", data);
+  assert.ok(detail.includes('<h3>썸네일 성적</h3><p class="note-grey">보고서가 멈췄어요 · 마지막 10/1</p>'));
+  assert.ok(!detail.includes("쇼츠 vs 롱폼") && !detail.includes("NaN") && !detail.includes("undefined"));
+});
+
+test("channel detail: a short window is labelled with its real days", () => {
+  const data = clone();
+  data.detail.soombi.reach.window_days = 5;
+  const html = channel("soombi", data);
+  assert.ok(html.includes('<span class="asof">5일 · 11/3까지</span>') && html.includes("5일 노출 합계"));
 });
 
 test("board card: under ten thousand stays a plain number, small changes keep a decimal", () => {
@@ -106,7 +140,7 @@ test("channel detail: reach panels come right after 수익창출", () => {
   const at = (t) => html.indexOf(`<h3>${t}`);
   assert.ok(at("수익창출") >= 0 && at("수익창출") < at("썸네일 성적"));
   assert.ok(at("썸네일 성적") < at("쇼츠 vs 롱폼 클릭률") && at("쇼츠 vs 롱폼 클릭률") < at("구독자 현황"));
-  assert.ok(html.includes('<h3>썸네일 성적<span class="asof">28일</span></h3>'));
+  assert.ok(html.includes('<h3>썸네일 성적<span class="asof">28일 · 11/3까지</span></h3>'));
 });
 
 test("channel detail: summary stats, both tables and the note", () => {

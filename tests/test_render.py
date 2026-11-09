@@ -674,11 +674,22 @@ def test_reach_summary_statuses_follow_the_page_thresholds():
     assert flat["ctr_pp"] == 0.1 and flat["ctr_status"] == "purple"  # +2% relative is inside the band
 
 
-def test_reach_summary_compares_per_day_so_a_partial_window_is_not_a_drop():
+def test_reach_summary_compares_per_calendar_day_so_missing_days_count_as_zero():
     end = date(2026, 11, 28)
-    rows = _steady(end, 3, 1000, 0.05) + _steady(end - timedelta(days=7), 28, 1000, 0.05)  # only 3 days in
+    # one day of 100 impressions in the last 7 calendar days (the other days have no rows) vs 100 a day before
+    rows = [_r(end, 100, 0.05)] + _steady(end - timedelta(days=7), 28, 100, 0.05)
     s = render._reach_summary(rows, end, 7, 5.0, -5.0)
-    assert s["impressions"] == 3000 and s["impressions_pct"] == 0.0 and s["impressions_status"] == "purple"
+    assert s["impressions"] == 100 and s["window_days"] == 7
+    assert s["impressions_pct"] == pytest.approx(-85.7, abs=0.1) and s["impressions_status"] == "blue"
+
+
+def test_reach_summary_window_days_is_the_real_history_at_launch():
+    end = date(2026, 11, 28)
+    three = render._reach_summary(_steady(end, 3, 1000, 0.05), end, 7, 5.0, -5.0)
+    assert three["window_days"] == 3 and three["impressions"] == 3000 and three["impressions_pct"] is None
+    full = render._reach_summary(_steady(end, 9, 1000, 0.05), end, 7, 5.0, -5.0)
+    assert full["window_days"] == 7
+    assert render._reach_summary(_steady(end, 40, 1000, 0.05), end, 28, 5.0, -5.0)["window_days"] == 28
 
 
 def test_reach_summary_needs_a_week_of_baseline():
@@ -689,7 +700,7 @@ def test_reach_summary_needs_a_week_of_baseline():
     assert six["impressions_pct"] is None and six["ctr_pp"] is None
     assert six["impressions_status"] == "grey" and six["ctr_status"] == "grey"
     seven = render._reach_summary(_steady(end, 7, 1000, 0.05) + _steady(prev_end, 7, 500, 0.05), end, 7, 5.0, -5.0)
-    assert seven["impressions_pct"] == 100.0
+    assert seven["impressions_pct"] == 100.0  # 7 days of history before the window: 500 a day, not 500 / 28
     assert render._reach_summary([], end, 7, 5.0, -5.0)["impressions"] is None
 
 
@@ -699,15 +710,21 @@ def test_reach_summary_needs_a_week_of_baseline():
     (7, 999, 0.01, "ok"),         # low ctr but below the median: not worth the fuss
     (30, 500, 0.06, "push"),      # 1.5 x 0.04 = 0.06; impressions == 0.5 x median counts
     (30, 501, 0.06, "ok"),
-    (30, 100, 0.2, "push"),
+    (30, 499, 0.2, None),         # too few impressions to judge
+    (30, 500, 0.2, "push"),       # exactly 500 is enough
     (6, 5000, 0.001, None),       # younger than a week
-    (7, 99, 0.2, None),           # too few impressions to judge
-    (7, 100, 0.2, "push"),        # exactly 100 is enough
+    (7, 499, 0.01, None),
     (None, 5000, 0.001, None),    # publish date unknown
     (30, None, None, None),
 ])
 def test_reach_verdict(age, impressions, ctr, expected):
     assert render._reach_verdict(impressions, ctr, age, 0.04, 1000) == expected
+
+
+def test_reach_verdict_needs_a_channel_ctr_above_zero():
+    # a channel with no clicks at all has no baseline: a 0% video must not read as "high ctr, few impressions"
+    assert render._reach_verdict(500, 0.0, 30, 0.0, 1000) is None
+    assert render._reach_verdict(500, 0.0, 30, -0.1, 1000) is None
 
 
 def test_reach_verdict_without_channel_baseline():
@@ -716,14 +733,16 @@ def test_reach_verdict_without_channel_baseline():
 
 
 def test_reach_thresholds_are_named_constants():
-    assert (render.REACH_MIN_AGE_DAYS, render.REACH_MIN_IMPRESSIONS) == (7, 100)
+    assert (render.REACH_MIN_AGE_DAYS, render.REACH_MIN_IMPRESSIONS) == (7, 500)
+    assert render.REACH_STALE_DAYS == 5
     assert (render.REACH_FIX_CTR_RATIO, render.REACH_PUSH_CTR_RATIO, render.REACH_PUSH_IMPRESSIONS_RATIO) == (0.67, 1.5, 0.5)
     assert render.REACH_TOP_N == 12
 
 
 def test_board_reach7_has_the_numbers_and_the_baseline_comparison(monkeypatch):
     r = _build(monkeypatch)["board"]["soombi"]["reach7"]
-    assert set(r) == {"impressions", "ctr", "impressions_pct", "ctr_pp", "impressions_status", "ctr_status", "as_of"}
+    assert set(r) == {"impressions", "ctr", "impressions_pct", "ctr_pp", "impressions_status", "ctr_status", "as_of",
+                      "window_days"}
     # the window ends at the newest reach day (11-03), not at the channel feed's latest day (11-04)
     assert r["as_of"] == "2026-11-03"
     assert r["impressions"] == 28514 and r["ctr"] == pytest.approx(0.04377, abs=1e-5)
@@ -735,6 +754,7 @@ def test_board_reach7_has_the_numbers_and_the_baseline_comparison(monkeypatch):
 def test_board_reach7_without_a_baseline_keeps_the_numbers(monkeypatch):
     r = _build(monkeypatch)["board"]["a2p"]["reach7"]
     assert r["impressions"] == 1500 and r["ctr"] == 0.1 and r["as_of"] == "2026-11-03"
+    assert r["window_days"] == 3  # three days of history: the card says so instead of "7 days"
     assert r["impressions_pct"] is None and r["ctr_pp"] is None and r["impressions_status"] == "grey"
 
 
@@ -753,8 +773,8 @@ def _reach_detail(monkeypatch, key="soombi"):
 def test_detail_reach_summary(monkeypatch):
     d = _reach_detail(monkeypatch)
     assert set(d) == {"days", "impressions", "ctr", "impressions_pct", "ctr_pp", "impressions_status", "ctr_status",
-                      "as_of", "this_week", "all", "shorts_ctr", "long_ctr"}
-    assert d["days"] == 28 and d["as_of"] == "2026-11-03"
+                      "as_of", "window_days", "this_week", "all", "shorts_ctr", "long_ctr"}
+    assert d["days"] == 28 and d["window_days"] == 28 and d["as_of"] == "2026-11-03"
     assert d["impressions"] == 49514 and d["ctr"] == pytest.approx(0.04217, abs=1e-5)
     # 49,514 / 28 days against the 28,000 / 28 days of the 28 days before
     assert d["impressions_pct"] == 76.8 and d["ctr_pp"] == 0.22
@@ -811,6 +831,22 @@ def test_detail_reach_only_counts_the_channels_own_videos(monkeypatch):
 def test_detail_reach_is_null_without_rows(monkeypatch):
     d = _build(monkeypatch)["detail"]
     assert d["backthen"]["reach"] is None and d["groovewav"]["reach"] is None
+
+
+def test_reach_that_stopped_arriving_is_flagged_stale_without_numbers(monkeypatch):
+    # soombi's newest report day is 11-03; a channel feed that moved on to 11-09 is 6 days ahead of it
+    daily = _daily() + [{**r, "day": date(2026, 11, 9)} for r in _daily() if r["day"] == LATEST]
+    d = _build(monkeypatch, yt_channel_daily=daily)
+    stale = {"stale": True, "as_of": "2026-11-03"}
+    assert d["board"]["soombi"]["reach7"] == stale and d["detail"]["soombi"]["reach"] == stale
+    assert d["board"]["a2p"]["reach7"] == stale  # same newest report day
+
+
+def test_reach_five_days_behind_is_still_current(monkeypatch):
+    daily = _daily() + [{**r, "day": date(2026, 11, 8)} for r in _daily() if r["day"] == LATEST]
+    d = _build(monkeypatch, yt_channel_daily=daily)   # 11-08 is exactly 5 days after 11-03
+    assert "stale" not in d["board"]["soombi"]["reach7"] and d["board"]["soombi"]["reach7"]["impressions"] > 0
+    assert "stale" not in d["detail"]["soombi"]["reach"]
 
 
 def test_reach_rows_are_read_for_a_bounded_window(monkeypatch):
