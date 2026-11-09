@@ -30,7 +30,7 @@ Status: active
 - [x] **지금 새로고침 버튼** (11/08 밤 실사용 확인): refresh.yml + Vercel 함수 `yt-ops-refresh`(`refresh/`) + 페이지 버튼. 형아 브라우저에서 눌러 23:55 실행 → 8채널 오류 0. 비밀값은 Vercel 에 GITHUB_TOKEN(PAT · yt-ops Actions 읽기+쓰기) · DASH_PASSWORD. 남은 것: 숨비 폰에서 한 번 눌러 보기.
 - [x] API 탭 메서드 → 행위 말("무슨 일에 썼나", 원래 이름은 툴팁) · CLI 같은 말 (11/09 새벽, 형아 지시)
 - [x] 새로고침을 전체 수집으로 · 30분 간격 (11/09) · 구독자는 계산값·API 값 중 큰 쪽 (11/09)
-- [ ] **V2-a 노출수·CTR**: Reporting API 켬 + 8채널 reach job 생성(11/09 11:20). 11/10 오후에 보고서 파일 확인 → 수집기·표·화면.
+- [ ] **V2-a 노출수·CTR**: Reporting API 켬 + 8채널 reach job 생성(11/09 11:20). **코드 완료(11/09)**: `yt_reach_daily` 표 · `ytops/reporting.py` · reach 수집기 · render `reach7`/`reach` · 카드 두 줄 + 심화 「썸네일 성적」(커밋 5개, 테스트 가짜만). 첫 보고서 파일 대기(11/10 오후 확인): `python -m ytops schema --apply` 로 표 만든 뒤 `collect --channel soombi --only reach` 한 번 돌려 실제 열 이름 · 값 범위(ratio) 확인. 그때까지 화면은 「보고서 쌓이는 중」.
 - [ ] 남은 것: `config/channels.toml` 채널별 업로드 계획 숫자 채우기(지금은 전부 '계획 없음') · 숨비 폰으로 열어 보기 · 채널 전체 상태 규칙 확정 · 아주 작은 기준값의 퍼센트(+70,900% 류) 표시 규칙 · 11/08 09:30 첫 자동 실행 확인
 
 ## Resume Point
