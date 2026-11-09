@@ -28,6 +28,7 @@ PRIMARY_KEYS: dict[str, list[str]] = {
     "yt_audience": ["channel_key", "as_of", "segment", "content", "dim", "key"],
     "yt_playlist": ["playlist_id"],
     "yt_playlist_item": ["playlist_id", "video_id"],
+    "yt_reach_daily": ["channel_key", "day", "video_id"],  # plain upsert: reports are re-read and may be regenerated
 }
 # a run finding nothing must clear the old rows (deleted schedules / playlists must not linger)
 REPLACE_PER_CHANNEL = ("yt_schedule", "yt_playlist", "yt_playlist_item")

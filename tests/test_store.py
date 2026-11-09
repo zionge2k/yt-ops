@@ -116,3 +116,21 @@ def test_run_collectors_migration_adds_column_and_backfills_live_only_rows():
         sql = " ".join(path.read_text(encoding="utf-8").split())
         assert "alter table yt_run_log add column if not exists collectors jsonb" in sql, path.name
         assert "update yt_run_log set collectors = '[\"live\"]'::jsonb where collectors is null" in sql, path.name
+
+
+def _flat_sql(path) -> str:
+    """SQL text without `--` comments and with whitespace collapsed, for statement comparisons."""
+    import re
+    return " ".join(re.sub(r"--[^\n]*", "", path.read_text(encoding="utf-8")).split())
+
+
+def test_reach_table_is_defined_in_schema_and_migration():
+    from pathlib import Path
+    db = Path(__file__).resolve().parent.parent / "db"
+    table = ("create table if not exists yt_reach_daily ( channel_key text not null, day date not null, "
+             "video_id text not null, impressions bigint, ctr numeric, collected_at timestamptz, "
+             "primary key (channel_key, day, video_id) );")
+    rls = "alter table yt_reach_daily enable row level security;"
+    for path in (db / "migrations" / "2026-11-09-reach.sql", db / "schema.sql"):
+        sql = _flat_sql(path)
+        assert table in sql and rls in sql, path.name

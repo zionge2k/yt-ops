@@ -15,7 +15,7 @@ SCHEMA_PATH = Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 TABLES = (
     "yt_channel_daily", "yt_yearly_minutes", "yt_subs_snapshot", "yt_video",
     "yt_video_daily", "yt_schedule", "yt_live_snapshot", "yt_manual", "yt_run_log",
-    "yt_audience", "yt_playlist", "yt_playlist_item",
+    "yt_audience", "yt_playlist", "yt_playlist_item", "yt_reach_daily",
 )
 
 

@@ -396,3 +396,20 @@ def test_channel_outside_projects_has_no_meter(monkeypatch):
     ran, metered = _two_project_setup(monkeypatch, [("p1", "P1", ["soombi"])], limit=3)
     runner.run_collect(["other"], dry_run=True, today=TODAY)
     assert ran == ["other"] and metered["other"] is None
+
+
+def test_reach_rows_are_upserted_on_channel_day_video_not_replaced(monkeypatch):
+    # yt_reach_daily accumulates one row per (channel, day, video): a run that finds nothing must not clear it
+    assert runner.PRIMARY_KEYS["yt_reach_daily"] == ["channel_key", "day", "video_id"]
+    assert "yt_reach_daily" not in runner.REPLACE_PER_CHANNEL
+    monkeypatch.setattr(runner, "COLLECTORS", [("channel_daily", SimpleNamespace(
+        collect=lambda ctx, s, e, **kw: {"yt_reach_daily": [
+            {"channel_key": "a2p", "day": date(2026, 11, 3), "video_id": "v", "impressions": 10, "ctr": 0.05}]}))])
+    monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
+    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None: "x")
+    monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": "A"})
+    calls = []
+    monkeypatch.setattr(runner.store, "upsert", lambda conn, t, rows, pk, keep=(): calls.append((t, tuple(pk))) or len(rows))
+    monkeypatch.setattr(runner.store, "replace_channel", lambda *a, **kw: calls.append(("replace",)) or 0)
+    runner.run_collect(["a2p"], dry_run=False, conn=object(), today=TODAY)
+    assert ("yt_reach_daily", ("channel_key", "day", "video_id")) in calls and ("replace",) not in calls

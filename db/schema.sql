@@ -168,3 +168,15 @@ create table if not exists yt_playlist_item (
   primary key (playlist_id, video_id)
 );
 alter table yt_playlist_item enable row level security;
+
+-- V2-a(2026-11-09): 썸네일 노출수 · 클릭률. Reporting API channel_reach_basic_a1 보고서 파일을 영상 · 일 단위로 담는다.
+create table if not exists yt_reach_daily (
+  channel_key text not null,
+  day date not null,
+  video_id text not null,
+  impressions bigint,
+  ctr numeric,            -- ratio 0..1 (thumbnail clicks / impressions)
+  collected_at timestamptz,
+  primary key (channel_key, day, video_id)
+);
+alter table yt_reach_daily enable row level security;
