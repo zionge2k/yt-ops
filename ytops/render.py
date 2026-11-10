@@ -14,7 +14,7 @@ fetch = store.fetch  # single injectable DB read; tests monkeypatch it
 
 # Fixed channel order on every screen (also exported as data.json "order").
 ORDER = ("soombi", "backthen", "urachacha", "a2p", "justsoombi", "soombicafe", "groovewav", "pliwav")
-SUBS_WINDOWS = (365, 14)
+SUBS_WINDOWS = (365, 7)
 WATCH_WINDOWS = (365, 28, 7)
 RECENT_DAYS = 28  # top videos / genres / subscription sources
 SUBS_GOAL, HOURS_GOAL = 1000, 4000

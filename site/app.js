@@ -293,7 +293,7 @@ function renderSubs() {
     const head = `<div class="namerow"><h2>${esc(nameOf(key))}</h2><a class="more" href="#ch/${esc(key)}">심화 ›</a></div>`;
     if (!t) return `<article class="card h-grey">${head}<div class="fail">—</div></article>`;
     const block = (w, label) => `<div class="win"><div class="wl"><span class="k">${label}</span><span class="num n t-${esc(w.status)}">${signed(w.total_net)}</span></div>${subsChart(w, w.status)}</div>`;
-    return `<article class="card h-${esc(t["365"].status)}">${head}${block(t["365"], "365일 순증")}${block(t["14"], "14일 순증")}</article>`;
+    return `<article class="card h-${esc(t["365"].status)}">${head}${block(t["365"], "365일 순증")}${block(t["7"], "7일 순증")}</article>`;
   }).join("");
   return `<div class="grid">${cards}</div>`;
 }

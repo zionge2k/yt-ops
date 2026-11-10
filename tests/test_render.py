@@ -243,7 +243,7 @@ def test_health_of_thresholds():
 
 def test_subs_trend_restores_totals(monkeypatch):
     d = _build(monkeypatch)["subs_trend"]["soombi"]
-    assert set(d) == {"365", "14"}
+    assert set(d) == {"365", "7"}
     t = d["365"]
     assert t["start"] == "2026-10-01" and t["end"] == "2026-11-04"  # clamped to the first data day
     assert len(t["series"]) == 35
@@ -256,16 +256,16 @@ def test_subs_trend_restores_totals(monkeypatch):
     first = t["series"][0]
     assert first["day"] == "2026-10-01" and first["net"] == 2 and first["total"] == 905 - 40
     assert t["total_net"] == 42 and t["status"] == "red"  # second half (all 10 days) vs first half (2)
-    s14 = d["14"]
-    assert s14["start"] == "2026-10-22" and len(s14["series"]) == 14 and s14["total_net"] == 40
-    assert s14["series"][0] == {"day": "2026-10-22", "total": 865, "net": None}
+    s7 = d["7"]
+    assert s7["start"] == "2026-10-29" and len(s7["series"]) == 7 and s7["total_net"] == 28
+    assert s7["series"][0] == {"day": "2026-10-29", "total": 881, "net": 4}
     # no subscriber snapshot: totals null, nets still there
-    g = _build(monkeypatch)["subs_trend"]["groovewav"]["14"]
+    g = _build(monkeypatch)["subs_trend"]["groovewav"]["7"]
     assert g["total_net"] is None and g["status"] == "grey" and all(s["total"] is None for s in g["series"])
 
 
 def test_subs_trend_total_null_without_snapshot(monkeypatch):
-    d = _build(monkeypatch, yt_subs_snapshot=[])["subs_trend"]["soombi"]["14"]
+    d = _build(monkeypatch, yt_subs_snapshot=[])["subs_trend"]["soombi"]["7"]
     assert all(s["total"] is None for s in d["series"]) and d["series"][-1]["net"] == 4
 
 
