@@ -198,8 +198,20 @@ p.qwhen { margin: 0 0 var(--gap); }
 .cell .v i { font-style: normal; font-size: 14px; font-weight: 700; color: var(--ink-3); margin: 0 8px 0 2px; }
 .t-ink { color: var(--ink); }
 .asof { font-size: 12px; font-weight: 600; color: var(--ink-3); margin-left: 5px; }
+/* in a narrow cell the as-of note drops under its label as a whole; the first row's figures keep one baseline */
+.cell .k { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 5px; }
+.cell .k .asof { margin-left: 0; white-space: nowrap; }
+.cell:nth-child(-n+2) .v { margin-top: auto; }
 .card .live { padding: 8px 10px; font-size: 15px; }
 .cell .v.sch { font-size: 18px; line-height: 1.5; white-space: normal; display: flex; flex-direction: column; }
 .sch .sl i { font-style: normal; font-size: 14px; font-weight: 700; color: var(--ink-3); margin: 0 4px 0 0; }
 .sch .sl b { font-size: 22px; }
 .sch .sl small { font-size: 14px; color: var(--ink-3); font-weight: 600; margin-left: 4px; }
+
+/* lag tooltip: opens under its cell (no gap to lose the hover); the right-hand column opens leftwards */
+.cell[data-tip] { position: relative; cursor: help; }
+.tip { position: absolute; top: 100%; left: 0; z-index: 5; width: 280px; max-width: calc(100vw - 24px); box-sizing: border-box; padding: 12px 36px 12px 14px; border-radius: 10px; background: var(--ink); color: #fff; font-size: 15px; font-weight: 500; line-height: 1.45; white-space: normal; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25); cursor: default; }
+.cell:nth-child(even) .tip { left: auto; right: 0; }
+.tip b { display: block; font-size: 16px; margin-bottom: 4px; }
+.tip ul { margin: 0; padding-left: 18px; }
+.tip-x { position: absolute; top: 4px; right: 4px; width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: #fff; font: inherit; font-size: 20px; line-height: 1; cursor: pointer; }

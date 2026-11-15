@@ -6,6 +6,7 @@ import sys
 import statistics
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from ytops import periods, store
 from ytops.errors import KST, human_error
@@ -539,6 +540,13 @@ def _reach_detail(rows, end, channel_key, videos, per_video, up, down) -> dict:
             "shorts_ctr": kind_ctr("short"), "long_ctr": kind_ctr("long")}
 
 
+def youtube_day_end(d: date | None) -> datetime | None:
+    """When YouTube day `d` ends, in UTC. Analytics days are Pacific-time days (KST 16:00 or 17:00 the next day)."""
+    if d is None:
+        return None
+    return datetime.combine(d + timedelta(days=1), datetime.min.time(), ZoneInfo("America/Los_Angeles")).astimezone(timezone.utc)
+
+
 def build(conn, *, today: date, config, now: datetime | None = None, quota: dict | None = None) -> dict:
     now = now or datetime.now(timezone.utc)
     channels, th = config["channels"], config["thresholds"]
@@ -612,7 +620,8 @@ def build(conn, *, today: date, config, now: datetime | None = None, quota: dict
             "monet": monet,
             "schedule": _schedule_summary([r for r in schedule_rows if r["channel_key"] == k], now),
             "as_of": {"subs": (s.get("taken_on") if subs_n is not None and subs_n == s.get("api_subscribers") else ch_latest[k]) if s else ch_latest[k],
-                      "hours": ch_latest[k], "h48": ch_latest[k]},
+                      "hours": ch_latest[k], "h48": ch_latest[k],
+                      "until": youtube_day_end(ch_latest[k])},
             "reach7": (stale_reach if reach_stale else
                        _reach_summary(ch_reach_nos, reach_end, REACH_BOARD_DAYS, up, down) if reach_end else None),
         }
@@ -640,6 +649,7 @@ def build(conn, *, today: date, config, now: datetime | None = None, quota: dict
         "generated_at": now,
         "last_daily_ok_at": _last_daily_ok_at(runs),
         "latest_day": latest,
+        "latest_until": youtube_day_end(latest),
         "lag_days": (today - latest).days if latest else None,
         "order": list(ORDER),
         "channels": out_channels,

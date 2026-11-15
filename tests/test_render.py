@@ -10,7 +10,7 @@ UTC = timezone.utc
 TODAY = date(2026, 11, 7)
 NOW = datetime(2026, 11, 7, 1, 10, tzinfo=UTC)  # 10 minutes after the fixture's live snapshots
 LATEST = date(2026, 11, 4)
-KEYS = {"v", "generated_at", "last_daily_ok_at", "latest_day", "lag_days", "order", "channels", "board",
+KEYS = {"v", "generated_at", "last_daily_ok_at", "latest_day", "latest_until", "lag_days", "order", "channels", "board",
         "subs_trend", "watch_trend", "detail", "errors", "quota"}
 
 
@@ -185,6 +185,19 @@ def test_v3_top_level_shape(monkeypatch):
     for section in ("board", "subs_trend", "watch_trend", "detail"):
         assert list(d[section]) == d["order"], section
     assert d["errors"] == [{"channel": "pliwav", "stage": "x", "run_started_at": None, "human": "오류"}]
+
+
+def test_youtube_day_end_is_the_pacific_midnight_in_utc():
+    assert render.youtube_day_end(date(2026, 11, 12)) == datetime(2026, 11, 13, 8, 0, tzinfo=timezone.utc)  # KST 17:00
+    assert render.youtube_day_end(date(2026, 7, 1)) == datetime(2026, 7, 2, 7, 0, tzinfo=timezone.utc)  # daylight time: KST 16:00
+    assert render.youtube_day_end(None) is None
+
+
+def test_build_carries_the_end_of_the_covered_period(monkeypatch):
+    d = _build(monkeypatch)
+    assert d["latest_until"] == "2026-11-05T08:00:00+00:00"  # latest_day 2026-11-04
+    assert d["board"]["soombi"]["as_of"]["until"] == "2026-11-05T08:00:00+00:00"
+    assert {"subs", "hours", "h48"} <= set(d["board"]["soombi"]["as_of"])
 
 
 def test_board_h48_and_subscribers(monkeypatch):

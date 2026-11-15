@@ -39,5 +39,7 @@ jobs:
 
       - run: node --test tests/test_site_reach.mjs
 
+      - run: node --test tests/test_site_lagtip.mjs
+
       - run: node --test
         working-directory: refresh

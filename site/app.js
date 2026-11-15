@@ -28,6 +28,8 @@ const kst = (iso) => {
   return o;
 };
 const mdhm = (iso) => { const p = kst(iso); return `${p.month}/${p.day} ${p.hour}:${p.minute}`; };
+/** "11/13 17시까지": the KST time a YouTube analytics day ends (the day itself is a Pacific-time day). */
+const untilKst = (iso) => { const p = kst(iso); return `${p.month}/${p.day} ${+p.hour}시까지`; };
 // Accept "YYYY-MM-DD" and full ISO timestamps (render emits both); only the date part is used.
 const ymd = (d) => { if (!d) return "—"; const [, m, dd] = String(d).slice(0, 10).split("-"); return `${+m}/${+dd}`; };
 const ymdFull = (d) => { if (!d) return "—"; const [y, m, dd] = String(d).slice(0, 10).split("-"); return `${y}.${+m}.${+dd}`; };
@@ -197,7 +199,7 @@ const asOf = (d, suffix) => (!d || sameDay(d + "T12:00:00+09:00", baseAt())) ? "
 const tone = (p, monetized) => monetized ? "red" : isNull(p) ? "grey" : p >= 70 ? "red" : p < 30 ? "blue" : "purple";
 
 /** One compact cell: small label, one big figure (colored), optional small note. */
-const cell = (label, val, t, note) => `<div class="cell"><span class="k">${label}</span><span class="v n t-${t || "ink"}">${val}${note ? `<small class="n">${note}</small>` : ""}</span></div>`;
+const cell = (label, val, t, note, attrs = "") => `<div class="cell"${attrs}><span class="k">${label}</span><span class="v n t-${t || "ink"}">${val}${note ? `<small class="n">${note}</small>` : ""}</span></div>`;
 
 function compactCard(ch, b) {
   const m = b.monet || {}, a = b.as_of || {}, h = b.h48 || {}, s = b.schedule, r = b.reach7;
@@ -205,10 +207,13 @@ function compactCard(ch, b) {
   const one = (label, x) => `<span class="sl"><i>${label}</i> <b class="t-${x.status}">${fmt(x.n)}</b>${x.n ? `<small>(${ymd(x.last)}까지)</small>` : ""}</span>`;
   const sch = s ? one("롱폼", s.long) + one("쇼츠", s.short) : "—";
   const reachOk = r && !r.stale;
+  // with an end time the label names it (always shown) and the cell gets the lag tooltip; old data.json keeps asOf
+  const lag = a.until ? ` data-tip="lag" data-until="${esc(a.until)}"` : "";
+  const dated = (label, d) => label + (a.until ? `<span class="asof n">${untilKst(a.until)}</span>` : asOf(d, ""));
   return `<div class="cells">
     ${cell("구독자", fmt(m.subs), subT, b.subscribers_approx ? "≈" : "")}
-    ${cell("시간" + asOf(a.hours, ""), fmt(m.hours), hrT)}
-    ${cell("48시간" + asOf(a.h48, ""), isNull(h.cur) ? "—" : fmt(h.cur, 0), h.status || "grey", isNull(h.pct) ? "" : pct(h.pct))}
+    ${cell(dated("시간", a.hours), fmt(m.hours), hrT, "", lag)}
+    ${cell(dated("48시간", a.h48), isNull(h.cur) ? "—" : fmt(h.cur, 0), h.status || "grey", isNull(h.pct) ? "" : pct(h.pct), lag)}
     <div class="cell"><span class="k">예약현황</span><span class="v sch n">${sch}</span></div>
     ${cell("노출률", reachOk ? bigNum(r.impressions) : "—", reachOk ? r.impressions_status : "grey")}
     ${cell("클릭률", reachOk ? ctrNum(r.ctr) : "—", reachOk ? r.ctr_status : "grey")}
@@ -221,8 +226,36 @@ function renderTop(view) {
   return `<header class="top">
     <h1>유튜브 상황판</h1>
     <nav class="tabs" aria-label="화면">${tabs}</nav>
-    <div class="meta n"><span>${mdhm(baseAt())} 수집 기준 · 분석 확정 ${ymd(DATA.latest_day)}까지</span>${refreshButton()}</div>
+    <div class="meta n"><span>${mdhm(baseAt())} 수집 기준 · 분석 확정 ${DATA.latest_until ? untilKst(DATA.latest_until) : `${ymd(DATA.latest_day)}까지`}</span>${refreshButton()}</div>
   </header>`;
+}
+
+// ---------- lag tooltip ----------
+const TIP_DELAY_MS = 3000;
+let tipDismissed = false;  // in memory only: a closed tip stays closed on every screen until the page is reloaded
+
+function lagTip(untilIso) {
+  return `<div class="tip" role="tooltip"><b>왜 오늘 숫자가 아닌가요?</b><ul>
+    <li>시청시간은 유튜브가 이틀쯤 늦게 알려 줘요.</li>
+    <li>매일 아침 하루치가 새로 나와요.</li>
+    <li>지금 숫자는 ${esc(untilKst(untilIso))} 본 시간이에요.</li>
+    <li>구독자와 라이브는 늦지 않아요.</li></ul>
+    <button type="button" class="tip-x" aria-label="닫기">×</button></div>`;
+}
+
+/** Show the tip on `el` after TIP_DELAY_MS of hovering; leaving cancels or hides it, the × hides it for good. */
+function bindLagTip(el) {
+  let timer = null;
+  const hide = () => { const tip = el.querySelector(".tip"); if (tip) tip.remove(); };
+  el.addEventListener("mouseenter", () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (tipDismissed || el.querySelector(".tip")) return;
+      el.insertAdjacentHTML("beforeend", lagTip(el.dataset.until));
+      el.querySelector(".tip-x").addEventListener("click", () => { tipDismissed = true; hide(); });
+    }, TIP_DELAY_MS);
+  });
+  el.addEventListener("mouseleave", () => { clearTimeout(timer); hide(); });
 }
 
 // ---------- thumbnail reach ----------
@@ -436,6 +469,7 @@ function render() {
     render();
     window.scrollTo(0, y);
   }));
+  app.querySelectorAll('[data-tip="lag"]').forEach(bindLagTip);
   const rfBtn = document.getElementById("refresh");
   if (rfBtn && !sampleMode) rfBtn.addEventListener("click", startRefresh);
   if (r.view === "ch") window.scrollTo(0, 0);
