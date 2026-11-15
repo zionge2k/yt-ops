@@ -28,8 +28,10 @@ const kst = (iso) => {
   return o;
 };
 const mdhm = (iso) => { const p = kst(iso); return `${p.month}/${p.day} ${p.hour}:${p.minute}`; };
+/** "11/13 17시": a KST time, hour without a leading zero. */
+const atKst = (iso) => { const p = kst(iso); return `${p.month}/${p.day} ${+p.hour}시`; };
 /** "11/13 17시까지": the KST time a YouTube analytics day ends (the day itself is a Pacific-time day). */
-const untilKst = (iso) => { const p = kst(iso); return `${p.month}/${p.day} ${+p.hour}시까지`; };
+const untilKst = (iso) => `${atKst(iso)}까지`;
 // Accept "YYYY-MM-DD" and full ISO timestamps (render emits both); only the date part is used.
 const ymd = (d) => { if (!d) return "—"; const [, m, dd] = String(d).slice(0, 10).split("-"); return `${+m}/${+dd}`; };
 const ymdFull = (d) => { if (!d) return "—"; const [y, m, dd] = String(d).slice(0, 10).split("-"); return `${y}.${+m}.${+dd}`; };
@@ -209,11 +211,14 @@ function compactCard(ch, b) {
   const reachOk = r && !r.stale;
   // with an end time the label names it (always shown) and the cell gets the lag tooltip; old data.json keeps asOf
   const lag = a.until ? ` data-tip="lag" data-until="${esc(a.until)}"` : "";
+  const h48Tip = h.from && h.until
+    ? ` data-tip="h48" data-from="${esc(h.from)}" data-until="${esc(h.until)}"` +
+      (!isNull(h.pct) && h.prev_from ? ` data-prev-from="${esc(h.prev_from)}" data-pct="${esc(pct(h.pct))}"` : "") : "";
   const dated = (label, d) => label + (a.until ? `<span class="asof n">${untilKst(a.until)}</span>` : asOf(d, ""));
   return `<div class="cells">
     ${cell("구독자", fmt(m.subs), subT, b.subscribers_approx ? "≈" : "")}
     ${cell(dated("시간", a.hours), fmt(m.hours), hrT, "", lag)}
-    ${cell(dated("48시간", a.h48), isNull(h.cur) ? "—" : fmt(h.cur, 0), h.status || "grey", isNull(h.pct) ? "" : pct(h.pct), lag)}
+    ${cell(dated("48시간", a.h48), isNull(h.cur) ? "—" : fmt(h.cur, 0), h.status || "grey", isNull(h.pct) ? "" : pct(h.pct), h48Tip)}
     <div class="cell"><span class="k">예약현황</span><span class="v sch n">${sch}</span></div>
     ${cell("노출률", reachOk ? bigNum(r.impressions) : "—", reachOk ? r.impressions_status : "grey")}
     ${cell("클릭률", reachOk ? ctrNum(r.ctr) : "—", reachOk ? r.ctr_status : "grey")}
@@ -230,29 +235,41 @@ function renderTop(view) {
   </header>`;
 }
 
-// ---------- lag tooltip ----------
+// ---------- tooltips ----------
 const TIP_DELAY_MS = 3000;
-let tipDismissed = false;  // in memory only: a closed tip stays closed on every screen until the page is reloaded
+const tipClosed = new Set();  // kinds closed with the x; in memory only, so they come back when the page is reloaded
+
+const tipShell = (title, lines) => `<div class="tip" role="tooltip"><b>${title}</b><ul>${lines.map((l) => `<li>${l}</li>`).join("")}</ul>
+    <button type="button" class="tip-x" aria-label="닫기">×</button></div>`;
 
 function lagTip(untilIso) {
-  return `<div class="tip" role="tooltip"><b>왜 오늘 숫자가 아닌가요?</b><ul>
-    <li>시청시간은 유튜브가 이틀쯤 늦게 알려 줘요.</li>
-    <li>매일 아침 하루치가 새로 나와요.</li>
-    <li>지금 숫자는 ${esc(untilKst(untilIso))} 본 시간이에요.</li>
-    <li>구독자와 라이브는 늦지 않아요.</li></ul>
-    <button type="button" class="tip-x" aria-label="닫기">×</button></div>`;
+  return tipShell("왜 오늘 숫자가 아닌가요?", [
+    "시청시간은 유튜브가 이틀쯤 늦게 알려 줘요.",
+    "매일 아침 하루치가 새로 나와요.",
+    `지금 숫자는 ${esc(untilKst(untilIso))} 본 시간이에요.`,
+    "구독자와 라이브는 늦지 않아요."]);
 }
 
-/** Show the tip on `el` after TIP_DELAY_MS of hovering; leaving cancels or hides it, the × hides it for good. */
-function bindLagTip(el) {
+/** The 48-hour span; prevFrom and pct (both optional) add the comparison line. */
+function h48Tip({ from, until, prevFrom, pct: pctText }) {
+  const lines = [`${esc(atKst(from))}부터 ${esc(untilKst(until))} 본 시간이에요.`];
+  if (prevFrom && pctText) lines.push(`${esc(pctText)}는 그 앞 이틀<span class="nw">(${esc(atKst(prevFrom))}~${esc(atKst(from))})</span>과 비교한 값이에요.`);
+  return tipShell("언제부터 언제까지인가요?", lines);
+}
+
+const TIPS = { lag: (d) => lagTip(d.until), h48: (d) => h48Tip(d) };
+
+/** Show the tip of kind el.dataset.tip after TIP_DELAY_MS of hovering; leaving cancels or hides it, the x closes that kind. */
+function bindTip(el) {
   let timer = null;
+  const kind = el.dataset.tip;
   const hide = () => { const tip = el.querySelector(".tip"); if (tip) tip.remove(); };
   el.addEventListener("mouseenter", () => {
     clearTimeout(timer);
     timer = setTimeout(() => {
-      if (tipDismissed || el.querySelector(".tip")) return;
-      el.insertAdjacentHTML("beforeend", lagTip(el.dataset.until));
-      el.querySelector(".tip-x").addEventListener("click", () => { tipDismissed = true; hide(); });
+      if (tipClosed.has(kind) || el.querySelector(".tip")) return;
+      el.insertAdjacentHTML("beforeend", TIPS[kind](el.dataset));
+      el.querySelector(".tip-x").addEventListener("click", () => { tipClosed.add(kind); hide(); });
     }, TIP_DELAY_MS);
   });
   el.addEventListener("mouseleave", () => { clearTimeout(timer); hide(); });
@@ -469,7 +486,7 @@ function render() {
     render();
     window.scrollTo(0, y);
   }));
-  app.querySelectorAll('[data-tip="lag"]').forEach(bindLagTip);
+  app.querySelectorAll("[data-tip]").forEach(bindTip);
   const rfBtn = document.getElementById("refresh");
   if (rfBtn && !sampleMode) rfBtn.addEventListener("click", startRefresh);
   if (r.view === "ch") window.scrollTo(0, 0);

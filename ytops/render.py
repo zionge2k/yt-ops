@@ -228,16 +228,27 @@ def _monet(subs_n, yearly_row, monetized) -> dict:
             "hours": hours, "hours_pct": _pct_of(hours, HOURS_GOAL), "monetized": monetized}
 
 
+def youtube_day_end(d: date | None) -> datetime | None:
+    """When YouTube day `d` ends, in UTC. Analytics days are Pacific-time days (KST 16:00 or 17:00 the next day)."""
+    if d is None:
+        return None
+    return datetime.combine(d + timedelta(days=1), datetime.min.time(), ZoneInfo("America/Los_Angeles")).astimezone(timezone.utc)
+
+
 def _h48(by_day, latest, up, down, comparable) -> dict:
     if latest is None:
-        return {"cur": None, "prev": None, "pct": None, "status": "grey", "days": []}
+        return {"cur": None, "prev": None, "pct": None, "status": "grey", "days": [],
+                "from": None, "until": None, "prev_from": None}
     cur_days = [latest - timedelta(days=1), latest]
     prev_days = [latest - timedelta(days=3), latest - timedelta(days=2)]
     cur = _sum(_hours(by_day[d]) for d in cur_days if d in by_day)
     prev = _sum(_hours(by_day[d]) for d in prev_days if d in by_day)
     pct = periods.pct_change(cur, prev) if comparable else None
     return {"cur": _round(cur, 1), "prev": _round(prev, 1) if comparable else None, "pct": pct,
-            "status": periods.color_of(pct, up, down), "days": cur_days}
+            "status": periods.color_of(pct, up, down), "days": cur_days,
+            # exact span in UTC: around the daylight-time change the two Pacific days last 47 or 49 hours
+            "from": youtube_day_end(cur_days[0] - timedelta(days=1)), "until": youtube_day_end(cur_days[1]),
+            "prev_from": youtube_day_end(prev_days[0] - timedelta(days=1))}
 
 
 # Live runs are every 2 hours and write a row only while a broadcast is live; 3 hours is that
@@ -538,13 +549,6 @@ def _reach_detail(rows, end, channel_key, videos, per_video, up, down) -> dict:
     return {"days": REACH_WINDOW_DAYS, **_reach_summary(rows, end, REACH_WINDOW_DAYS, up, down),
             "this_week": [row(vid) for _, vid in this_week], "all": [row(vid) for vid in most_shown],
             "shorts_ctr": kind_ctr("short"), "long_ctr": kind_ctr("long")}
-
-
-def youtube_day_end(d: date | None) -> datetime | None:
-    """When YouTube day `d` ends, in UTC. Analytics days are Pacific-time days (KST 16:00 or 17:00 the next day)."""
-    if d is None:
-        return None
-    return datetime.combine(d + timedelta(days=1), datetime.min.time(), ZoneInfo("America/Los_Angeles")).astimezone(timezone.utc)
 
 
 def build(conn, *, today: date, config, now: datetime | None = None, quota: dict | None = None) -> dict:

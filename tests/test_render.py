@@ -193,6 +193,23 @@ def test_youtube_day_end_is_the_pacific_midnight_in_utc():
     assert render.youtube_day_end(None) is None
 
 
+def test_h48_carries_the_span_it_covers_in_utc():
+    h = render._h48({}, date(2026, 11, 12), 10, -10, True)
+    assert (h["from"], h["until"], h["prev_from"]) == (
+        datetime(2026, 11, 11, 8, 0, tzinfo=timezone.utc), datetime(2026, 11, 13, 8, 0, tzinfo=timezone.utc),
+        datetime(2026, 11, 9, 8, 0, tzinfo=timezone.utc))
+    empty = render._h48({}, None, 10, -10, True)
+    assert (empty["from"], empty["until"], empty["prev_from"]) == (None, None, None)
+
+
+def test_h48_spans_are_not_a_fixed_48_hours_around_the_daylight_time_change():
+    # US daylight time ended 2026-11-01: the two days 10-31 and 11-01 last 49 hours
+    h = render._h48({}, date(2026, 11, 1), 10, -10, True)
+    assert h["from"] == datetime(2026, 10, 31, 7, 0, tzinfo=timezone.utc)
+    assert h["until"] - h["from"] == timedelta(hours=49)
+    assert h["from"] - h["prev_from"] == timedelta(hours=48)
+
+
 def test_build_carries_the_end_of_the_covered_period(monkeypatch):
     d = _build(monkeypatch)
     assert d["latest_until"] == "2026-11-05T08:00:00+00:00"  # latest_day 2026-11-04
@@ -205,7 +222,9 @@ def test_board_h48_and_subscribers(monkeypatch):
     assert set(b) == {"subscribers", "subscribers_approx", "h48", "live", "health", "monet", "reach7", "schedule", "as_of"}
     assert b["subscribers"] == 905 and b["subscribers_approx"] is False  # below 1,000 the live api value is exact and wins over the older reconstruction (900)
     # 11-03 (1.0h) + 11-04 (2.0h) = 3.0 vs 11-01 + 11-02 = 4.0 -> -25%
-    assert b["h48"] == {"cur": 3.0, "prev": 4.0, "pct": -25.0, "status": "blue", "days": ["2026-11-03", "2026-11-04"]}
+    assert b["h48"] == {"cur": 3.0, "prev": 4.0, "pct": -25.0, "status": "blue", "days": ["2026-11-03", "2026-11-04"],
+                        "from": "2026-11-03T08:00:00+00:00", "until": "2026-11-05T08:00:00+00:00",
+                        "prev_from": "2026-11-01T07:00:00+00:00"}
     a2p = _build(monkeypatch)["board"]["a2p"]
     assert a2p["subscribers"] == 1200 and a2p["subscribers_approx"] is True  # api (rounded) when exact is None
     # behind the global latest day: current window shown, no comparison
@@ -450,7 +469,8 @@ def test_empty_db(monkeypatch):
     d = _build(monkeypatch, **{t: [] for t in ROWS})
     assert d["latest_day"] is None and d["lag_days"] is None
     b = d["board"]["soombi"]
-    assert b["h48"] == {"cur": None, "prev": None, "pct": None, "status": "grey", "days": []}
+    assert b["h48"] == {"cur": None, "prev": None, "pct": None, "status": "grey", "days": [],
+                        "from": None, "until": None, "prev_from": None}
     assert d["subs_trend"]["soombi"]["365"]["series"] == [] and d["watch_trend"]["soombi"]["7"]["total"] is None
 
 
