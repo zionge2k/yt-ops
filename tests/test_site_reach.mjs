@@ -200,3 +200,13 @@ test("channel detail without reach: one waiting line, no shorts-vs-long panel", 
   data.detail.soombi.reach = null;
   assert.ok(channel("soombi", data).includes("보고서 쌓이는 중 · 유튜브가 하루 한 번 내놓아요"));
 });
+
+test("the schedule cell shows the last booked day as a Korean date, not the UTC one", () => {
+  const data = clone();
+  data.board.soombi.schedule = {
+    long: { n: 2, last: "2026-12-03T21:00:00+00:00", status: "blue" },  // KST 12/4 06:00
+    short: { n: 1, last: "2026-12-03T10:00:00+00:00", status: "blue" },  // KST 12/3 19:00
+  };
+  const html = card(board(data), "숨비찰나");
+  assert.ok(html.includes("(12/4까지)") && html.includes("(12/3까지)"));
+});

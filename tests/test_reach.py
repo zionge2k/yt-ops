@@ -197,7 +197,7 @@ def _runner_setup(monkeypatch, collectors, channels=("a2p",)):
     built = []
     monkeypatch.setattr(runner, "COLLECTORS", collectors)
     monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
-    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None: "x")
+    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None, **kw: "x")
     monkeypatch.setattr(runner, "reporting_for_key", lambda k: built.append(k) or f"reporting-{k}")
     monkeypatch.setattr(runner, "load_channels", lambda: {k: SimpleNamespace(is_live=True) for k in channels})
     return built

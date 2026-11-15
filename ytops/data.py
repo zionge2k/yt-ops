@@ -48,12 +48,14 @@ class PagingAborted(RuntimeError):
 
 class DataClient:
     def __init__(self, service, sleep: Callable[[float], None] = time.sleep,
-                 call_budget: int = CALL_BUDGET, meter: CallMeter | None = None):
+                 call_budget: int = CALL_BUDGET, meter: CallMeter | None = None, known_ids=()):
         self._service = service
         self._sleep = sleep
         self.calls = 0
         self._budget = call_budget
         self._meter = meter
+        self._known_ids = list(known_ids)  # videos seen in earlier runs (see _uploads)
+        self.uploads_shortfall = 0  # videos the channel has but this client could not find; set by uploads()
 
     def _run(self, request):
         if self.calls >= self._budget:
@@ -85,18 +87,32 @@ class DataClient:
         if not items:
             return []
         playlist = items[0]["contentDetails"]["relatedPlaylists"]["uploads"]
+
         def req(token):
             kwargs = dict(part="contentDetails", playlistId=playlist, maxResults=BATCH)
             if token:
                 kwargs["pageToken"] = token
             return self._service.playlistItems().list(**kwargs)
 
-        ids = [i["contentDetails"]["videoId"]
-               for i in self._pages(req, max_items=max_items)]
-        ids = list(dict.fromkeys(ids))  # a playlist may list a video more than once
         if max_items is not None:
-            ids = ids[:max_items]
-        return self.videos(ids)
+            ids = list(dict.fromkeys(i["contentDetails"]["videoId"] for i in self._pages(req, max_items=max_items)))
+            return self.videos(ids[:max_items])
+        # From page 2 on, an owner's playlist with private videos repeats videos of earlier pages and leaves out the
+        # ones that belong there (measured 2026-11-15). Page 1 is complete: read it, add the ids earlier runs
+        # stored, and walk the rest only if videos.list still finds fewer than the playlist's own total.
+        first = self._run(req(None))
+        first_ids = [i["contentDetails"]["videoId"] for i in first.get("items", [])]
+        total = (first.get("pageInfo") or {}).get("totalResults")
+        asked = list(dict.fromkeys(first_ids + self._known_ids))
+        videos = self.videos(asked)
+        token = first.get("nextPageToken")
+        if token and first_ids and (total is None or len(videos) < total):
+            rest = self._pages(req, start_token=token)
+            seen = set(asked)
+            new = [i for i in dict.fromkeys(i["contentDetails"]["videoId"] for i in rest) if i not in seen]
+            videos += self.videos(new)
+        self.uploads_shortfall = max(0, total - len(videos)) if total is not None else 0
+        return videos
 
     def videos(self, ids: list[str]) -> list[dict]:
         ids = list(dict.fromkeys(ids))
@@ -112,7 +128,7 @@ class DataClient:
                     out.append(item)
         return out
 
-    def _pages(self, make_request, max_items: int | None = None) -> list[dict]:
+    def _pages(self, make_request, max_items: int | None = None, start_token: str | None = None) -> list[dict]:
         """All items of a paged list; make_request(page_token) builds one request.
 
         Stops on a missing token, a token already seen (the API can hand the same
@@ -122,8 +138,8 @@ class DataClient:
         must never look complete (replace tables would wipe good rows).
         """
         items: list[dict] = []
-        token = None
-        seen_tokens: set[str] = set()
+        token = start_token
+        seen_tokens: set[str] = {start_token} if start_token else set()
         for _ in range(MAX_PAGES):
             page = self._run(make_request(token))
             got = page.get("items", [])
@@ -134,6 +150,13 @@ class DataClient:
                 return items
             seen_tokens.add(token)
         raise PagingAborted(f"paging stopped after {MAX_PAGES} pages with a next page token left")
+
+    def search_mine_page(self, token: str | None = None) -> dict:
+        """One page of search.list over my own videos, newest first (100 quota units a page; includes private ones)."""
+        kwargs = dict(part="id", forMine=True, type="video", order="date", maxResults=BATCH)
+        if token:
+            kwargs["pageToken"] = token
+        return self._run(self._service.search().list(**kwargs))
 
     def playlists(self) -> list[dict]:
         """Every playlist of the channel (snippet + contentDetails)."""
@@ -165,11 +188,12 @@ class DataClient:
         return items[0].get("status", {}) if items else {}
 
 
-def for_key(key: str, meter: CallMeter | None = None) -> DataClient:
+def for_key(key: str, meter: CallMeter | None = None, known_ids=()) -> DataClient:
     from googleapiclient.discovery import build
 
     from ytops.auth import credentials
     from ytops.registry import resolve_key
 
     creds = credentials(resolve_key(key))
-    return DataClient(build("youtube", "v3", credentials=creds, cache_discovery=False), meter=meter)
+    return DataClient(build("youtube", "v3", credentials=creds, cache_discovery=False), meter=meter,
+                      known_ids=known_ids)

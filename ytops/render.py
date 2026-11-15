@@ -121,12 +121,16 @@ TABLE_OWNERS = {
 }
 
 
+# Stages named after what failed, not after a collector: the collector that can clear them.
+STAGE_OWNERS = {"uploads": "video"}
+
+
 def _stage_owner(stage) -> str | None:
     """Collector that owns a failure stage; None when any run can speak for it."""
     stage = stage or ""
     if stage.startswith("store:"):
         return TABLE_OWNERS.get(stage[len("store:"):])
-    return None if stage == "client" else stage
+    return None if stage == "client" else STAGE_OWNERS.get(stage, stage)
 
 
 def _covers(run, key) -> bool:

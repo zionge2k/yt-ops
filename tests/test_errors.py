@@ -65,3 +65,8 @@ def test_render_stage_error_names_the_table():
 def test_project_budget_exceeded_text():
     err = {"error": "ProjectBudgetExceeded", "stage": "budget"}
     assert human_error(err, NOW) == "프로젝트 호출 예산 초과 · 같은 프로젝트의 다른 채널을 지키려고 중단"
+
+
+def test_uploads_shortfall_text():
+    err = {"error": "UploadsShortfall", "stage": "uploads", "missing": 3}
+    assert human_error(err, NOW) == "유튜브 영상 목록에서 3편을 못 찾았어요 · 꼬비가 ytops discover 로 찾아요"

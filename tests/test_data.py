@@ -219,3 +219,109 @@ def test_client_budget_checked_before_meter():
     with pytest.raises(CallBudgetExceeded):
         c.channel_stats()
     assert meter.calls == 1
+
+
+# ---- uploads: first page + known ids (2026-11-15: pages 2+ repeat earlier videos and drop the ones in their place)
+
+def _plt(start, n, total, token=None):
+    d = _pl(start, n, token)
+    d["pageInfo"] = {"totalResults": total, "resultsPerPage": 50}
+    return d
+
+
+def _known_client(svc, known):
+    return DataClient(svc, sleep=lambda s: None, known_ids=known)
+
+
+def _asked(svc):
+    return [i for kw in svc.kwargs("videos.list") for i in kw["id"].split(",")]
+
+
+def test_uploads_reads_one_page_and_asks_for_the_known_ids():
+    svc = FakeService(
+        channels__list=[CHANNEL],
+        playlistItems__list=[_plt(0, 50, 60, "t1")],
+        videos__list=[_vids(_ids(0, 50)), _vids(_ids(50, 60))],
+    )
+    c = _known_client(svc, _ids(50, 60).split(","))
+    items = c.uploads()
+    assert len(items) == 60 and c.uploads_shortfall == 0
+    assert len(svc.kwargs("playlistItems.list")) == 1
+    assert [len(kw["id"].split(",")) for kw in svc.kwargs("videos.list")] == [50, 10]
+
+
+def test_uploads_a_deleted_known_id_is_not_a_shortfall():
+    svc = FakeService(
+        channels__list=[CHANNEL],
+        playlistItems__list=[_plt(0, 50, 51, "t1")],
+        videos__list=[_vids(_ids(0, 50)), _vids("vid00050")],  # the API leaves "gone" out
+    )
+    c = _known_client(svc, ["vid00050", "gone"])
+    assert len(c.uploads()) == 51 and c.uploads_shortfall == 0
+    assert len(svc.kwargs("playlistItems.list")) == 1
+
+
+def test_uploads_walks_the_rest_when_short_and_asks_only_for_new_ids():
+    svc = FakeService(
+        channels__list=[CHANNEL],
+        playlistItems__list=[_plt(0, 50, 120, "t1"), _plt(50, 50, 120, "t2"), _plt(100, 20, 120)],
+        videos__list=[_vids(_ids(0, 50)), _vids(_ids(50, 100)), _vids(_ids(100, 120))],
+    )
+    c = client(svc)
+    assert len(c.uploads()) == 120 and c.uploads_shortfall == 0
+    assert [kw.get("pageToken") for kw in svc.kwargs("playlistItems.list")] == [None, "t1", "t2"]  # page 1 is not read twice
+    asked = _asked(svc)
+    assert len(asked) == len(set(asked)) == 120
+
+
+def test_uploads_shortfall_is_recorded_not_raised():
+    svc = FakeService(
+        channels__list=[CHANNEL],
+        playlistItems__list=[_plt(0, 50, 125, "t1"), _plt(50, 50, 125, "t2"), _plt(100, 20, 125)],
+        videos__list=[_vids(_ids(0, 50)), _vids(_ids(50, 100)), _vids(_ids(100, 120))],
+    )
+    c = client(svc)
+    assert len(c.uploads()) == 120
+    assert c.uploads_shortfall == 5
+
+
+def test_uploads_known_ids_fill_what_later_pages_leave_out():
+    # page 2 repeats the first five videos and never lists vid00055..59; they are only known from an earlier run
+    page2 = {"items": [{"contentDetails": {"videoId": v}} for v in _ids(0, 5).split(",") + _ids(50, 55).split(",")]}
+    svc = FakeService(
+        channels__list=[CHANNEL],
+        playlistItems__list=[_plt(0, 50, 60, "t1"), page2],
+        videos__list=[_vids(_ids(0, 50)), _vids(_ids(55, 60)), _vids(_ids(50, 55))],
+    )
+    c = _known_client(svc, _ids(55, 60).split(","))
+    got = {i["id"] for i in c.uploads()}
+    assert got == set(_ids(0, 60).split(",")) and c.uploads_shortfall == 0
+    asked = _asked(svc)
+    assert len(asked) == len(set(asked))
+
+
+def test_uploads_result_is_cached_per_client():
+    svc = FakeService(channels__list=[CHANNEL], playlistItems__list=[_plt(0, 50, 50)], videos__list=[_vids(_ids(0, 50))])
+    c = client(svc)
+    assert c.uploads() is c.uploads()
+    assert len(svc.kwargs("playlistItems.list")) == 1 and len(svc.kwargs("videos.list")) == 1
+
+
+def test_uploads_without_a_total_walks_like_before():
+    svc = FakeService(
+        channels__list=[CHANNEL],
+        playlistItems__list=[_pl(0, 50, "t1"), _pl(50, 10)],
+        videos__list=[_vids(_ids(0, 50)), _vids(_ids(50, 60))],
+    )
+    c = client(svc)
+    assert len(c.uploads()) == 60 and c.uploads_shortfall == 0
+
+
+def test_search_mine_page_asks_for_my_videos_newest_first():
+    svc = FakeService(search__list=[{"items": []}, {"items": []}])
+    c = client(svc)
+    c.search_mine_page(None)
+    c.search_mine_page("tok")
+    first, second = svc.kwargs("search.list")
+    assert first == dict(part="id", forMine=True, type="video", order="date", maxResults=50)
+    assert second == {**first, "pageToken": "tok"}

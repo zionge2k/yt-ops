@@ -138,6 +138,10 @@ def main(argv: list[str] | None = None) -> int:
     sh.add_argument("--channel", required=True)
     sh.add_argument("--days", type=int, default=28)
     sh.add_argument("--top", type=int, default=20)
+    dc = sub.add_parser("discover", help="find videos the uploads playlist misses, with search.list")
+    dc.add_argument("--channel", required=True)
+    dc.add_argument("--max-pages", type=int, default=commands.DISCOVER_MAX_PAGES,
+                    help="search pages to read at most; every page costs 100 quota units")
     sc = sub.add_parser("schedule")
     sc.add_argument("--channel", required=True)
     q = sub.add_parser("query")
@@ -176,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "render":
         return _render(args)
     handler = {"live": commands.cmd_live, "shorts": commands.cmd_shorts, "schedule": commands.cmd_schedule,
-               "query": commands.cmd_query, "quota": commands.cmd_quota, "manual": commands.cmd_manual}.get(args.cmd)
+               "query": commands.cmd_query, "discover": commands.cmd_discover, "quota": commands.cmd_quota, "manual": commands.cmd_manual}.get(args.cmd)
     if handler:
         return handler(args)
     if args.cmd == "encrypt":

@@ -197,3 +197,83 @@ def test_cli_reach_reread_days_is_passed_through(monkeypatch):
     assert got["kw"]["reach_reread_days"] is None
     cli.main(["backfill", "--all", "--dry-run"])
     assert got["kw"]["reach_reread_days"] is None
+
+
+# ---- discover ----
+
+class _DiscoverData:
+    def __init__(self, shortfall, pages, videos):
+        self.uploads_shortfall, self.pages, self.video_map = shortfall, list(pages), videos
+        self.tokens, self.asked = [], []
+
+    def uploads(self):
+        return [{"id": "have1"}]
+
+    def search_mine_page(self, token=None):
+        self.tokens.append(token)
+        return self.pages.pop(0)
+
+    def videos(self, ids):
+        self.asked.append(list(ids))
+        return [self.video_map[i] for i in ids if i in self.video_map]
+
+
+def _sp(*ids, token=None):
+    page = {"items": [{"id": {"kind": "youtube#video", "videoId": i}} for i in ids]}
+    if token:
+        page["nextPageToken"] = token
+    return page
+
+
+def _discover(monkeypatch, data, *args):
+    upserts = []
+    monkeypatch.setattr(cli.commands, "connect", lambda: "conn")
+    monkeypatch.setattr(cli.commands.runner, "known_video_ids", lambda conn, key: ["k1"])
+    monkeypatch.setattr(cli.commands, "data_for_key", lambda key, meter=None, known_ids=(): data)
+    monkeypatch.setattr(cli.commands.store, "upsert", lambda conn, t, rows, pk, keep=(): upserts.append((t, rows, pk, keep)) or len(rows))
+    return cli.main(["discover", "--channel", "chalna", *args]), upserts
+
+
+def _video(vid):
+    return {"id": vid, "snippet": {"title": f"title {vid}", "publishedAt": "2026-04-03T01:00:00Z"},
+            "status": {"privacyStatus": "private"}, "contentDetails": {"duration": "PT30S"}}
+
+
+def test_discover_does_not_search_when_nothing_is_missing(monkeypatch, capsys):
+    data = _DiscoverData(0, [], {})
+    rc, upserts = _discover(monkeypatch, data)
+    assert rc == 0 and data.tokens == [] and upserts == []
+    assert "모자란 영상 없음" in capsys.readouterr().out
+
+
+def test_discover_pages_until_the_missing_videos_are_found(monkeypatch, capsys):
+    data = _DiscoverData(2, [_sp("have1", "n1", token="t1"), _sp("n2", "x", token="t2"), _sp("never")],
+                         {"n1": _video("n1"), "n2": _video("n2")})
+    rc, upserts = _discover(monkeypatch, data)
+    assert rc == 0
+    assert data.tokens == [None, "t1"]  # two missing, both found on page 2: no third page
+    assert data.asked == [["n1", "n2", "x"]]  # the whole page is asked; "x" does not exist
+    (table, rows, pk, keep), = upserts
+    assert table == "yt_video" and pk == ["video_id"] and keep == ("first_seen_at",)
+    assert [r["video_id"] for r in rows] == ["n1", "n2"] and rows[0]["channel_key"] == "soombi"
+    assert rows[0]["privacy"] == "private" and rows[0]["first_seen_at"] == rows[0]["last_seen_at"]
+    out = capsys.readouterr().out
+    assert "title n1" in out and "200" in out  # 2 pages x 100 units
+
+
+def test_discover_stops_at_max_pages_and_says_what_is_still_missing(monkeypatch, capsys):
+    data = _DiscoverData(5, [_sp("a", token="t1"), _sp("b", token="t2"), _sp("c", token="t3")],
+                         {i: _video(i) for i in "abc"})
+    rc, upserts = _discover(monkeypatch, data, "--max-pages", "2")
+    assert data.tokens == [None, "t1"] and len(upserts[0][1]) == 2
+    assert "3편" in capsys.readouterr().out  # 5 missing, 2 found
+
+
+def test_discover_stops_when_the_search_has_no_next_page(monkeypatch):
+    data = _DiscoverData(3, [_sp("a")], {"a": _video("a")})
+    _discover(monkeypatch, data)
+    assert data.tokens == [None]
+
+
+def test_discover_max_pages_defaults_to_12():
+    assert cli.commands.DISCOVER_MAX_PAGES == 12

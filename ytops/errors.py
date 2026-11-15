@@ -39,6 +39,8 @@ def human_error(err: dict, now: datetime) -> str:
         return "열쇠 만료 · 다시 로그인 필요"
     if name == "PagingAborted":
         return "목록이 끝나지 않아 중단 (기존 데이터 유지)"
+    if name == "UploadsShortfall":
+        return f"유튜브 영상 목록에서 {err.get('missing')}편을 못 찾았어요 · 꼬비가 ytops discover 로 찾아요"
     if name == "CallBudgetExceeded":
         return "호출 예산 초과로 중단"
     if name == "ProjectBudgetExceeded":

@@ -58,3 +58,10 @@ def test_video_rows_from_fixture():
     assert (rows[1]["duration_s"], rows[1]["content_kind"]) == (17, "short")
     assert (rows[2]["duration_s"], rows[2]["content_kind"]) == (0, "live_archive")
     assert (rows[3]["duration_s"], rows[3]["content_kind"]) == (8994, "long")
+
+
+def test_row_of_is_the_row_the_collector_builds():
+    item = fixture("videos_list.json")["items"][0]
+    row = video.row_of(item, "soombi", NOW)
+    assert row == video.collect(CollectContext("soombi", CH, None, FakeData([item]), TODAY, NOW), TODAY, TODAY)["yt_video"][0]
+    assert row["video_id"] == "vid00001" and row["last_seen_at"] == NOW

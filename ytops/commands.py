@@ -7,10 +7,11 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from ytops import quota, registry, reports, store
+from ytops import quota, registry, reports, runner, store
 from ytops.analytics import for_key as analytics_for_key
 from ytops.collect import live as live_collector
 from ytops.collect import schedule as schedule_collector
+from ytops.collect import video as video_collector
 from ytops.collect.context import CollectContext
 from ytops.data import for_key as data_for_key
 from ytops.registry import KEYS, resolve_key
@@ -84,6 +85,45 @@ def cmd_shorts(args) -> int:
         r["subs_per_1k"] = round(r["subscribersGained"] / views * 1000, 1) if views else None
     print(f"# {registry.load_channels()[key].display} · {start} ~ {end} · shorts top {args.top}")
     print(reports.table(rows, ["video", "title", "views", "engagedViews", "engaged_pct", "subs_per_1k"]))
+    return 0
+
+
+DISCOVER_MAX_PAGES = 12
+SEARCH_UNITS = 100  # quota units of one search.list page
+
+
+def cmd_discover(args) -> int:
+    """Find videos the uploads playlist does not list (see DataClient._uploads) with search.list and store them."""
+    key = resolve_key(args.channel)
+    conn = connect()
+    data = data_for_key(key, known_ids=runner.known_video_ids(conn, key))
+    have = {v["id"] for v in data.uploads()}
+    missing = data.uploads_shortfall
+    if missing == 0:
+        print("모자란 영상 없음")
+        return 0
+    found: list[str] = []
+    token, pages = None, 0
+    while pages < args.max_pages and len(found) < missing:
+        resp = data.search_mine_page(token)
+        pages += 1
+        for item in resp.get("items") or []:
+            vid = (item.get("id") or {}).get("videoId")
+            if vid and vid not in have and vid not in found:
+                found.append(vid)
+        token = resp.get("nextPageToken")
+        if not token or not resp.get("items"):
+            break
+    now = datetime.now(timezone.utc)
+    rows = [{**video_collector.row_of(item, key, now), "first_seen_at": now} for item in (data.videos(found) if found else [])]
+    if rows:
+        store.upsert(conn, "yt_video", rows, runner.PRIMARY_KEYS["yt_video"], runner.KEEP["yt_video"])
+    print(f"search.list {pages}쪽 x {SEARCH_UNITS}단위 = {pages * SEARCH_UNITS}단위")
+    for r in rows:
+        print(f"  {r['privacy']} · {r['published_at']:%Y-%m-%d} · {_short(r['title'])}" if r["published_at"]
+              else f"  {r['privacy']} · {_short(r['title'])}")
+    left = missing - len(rows)
+    print(f"찾은 영상 {len(rows)}편" + (f" · 아직 {left}편 모자라요" if left > 0 else ""))
     return 0
 
 

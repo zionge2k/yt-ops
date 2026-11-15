@@ -1,3 +1,5 @@
+import pytest
+
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
@@ -19,7 +21,7 @@ def _setup(monkeypatch, bad=()):
         lambda ctx: [{"channel_key": ctx.key, "day": date(2026, 11, 3), "views": 5, "collected_at": ctx.collected_at}]
     ))])
     monkeypatch.setattr(runner, "analytics_for_key", lambda k: "boom" if k in bad else "ok")
-    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None: "data")
+    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None, **kw: "data")
     monkeypatch.setattr(runner, "load_channels", lambda: {"soombi": "S", "a2p": "A"})
 
 
@@ -80,7 +82,7 @@ def test_subs_exact_uses_this_runs_rows_before_db_write(monkeypatch):
         ("subs", runner.subs),
     ])
     monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
-    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None: SimpleNamespace(
+    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None, **kw: SimpleNamespace(
         channel_stats=lambda: {"statistics": {"subscriberCount": "990"}}))
     monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": "A"})
 
@@ -107,7 +109,7 @@ def test_subs_exact_over_1000_uses_this_runs_rows(monkeypatch):
         ("subs", runner.subs),
     ])
     monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
-    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None: SimpleNamespace(
+    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None, **kw: SimpleNamespace(
         channel_stats=lambda: {"statistics": {"subscriberCount": "1000"}}))
     monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": "A"})
 
@@ -125,10 +127,11 @@ def test_subs_exact_over_1000_uses_this_runs_rows(monkeypatch):
 
 
 def test_video_first_seen_filled(monkeypatch):
+    monkeypatch.setattr(runner, "known_video_ids", lambda conn, key: [])
     monkeypatch.setattr(runner, "COLLECTORS", [("video", SimpleNamespace(
         collect=lambda ctx, s, e: {"yt_video": [{"video_id": "v", "last_seen_at": ctx.collected_at}]}))])
     monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
-    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None: "x")
+    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None, **kw: "x")
     monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": "A"})
     seen = {}
     monkeypatch.setattr(runner.store, "upsert", lambda conn, t, rows, pk, keep=(): seen.setdefault(t, (rows, keep)) and len(rows))
@@ -193,18 +196,19 @@ def test_default_today_is_kst_date(monkeypatch):
     monkeypatch.setattr(runner, "COLLECTORS", [("channel_daily", SimpleNamespace(
         collect=lambda ctx, s, e, **kw: seen.update(today=ctx.today, end=e) or {}))])
     monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
-    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None: "x")
+    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None, **kw: "x")
     monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": "A"})
     runner.run_collect(["a2p"], dry_run=True)
     assert seen["today"] == date(2026, 11, 7) and seen["end"] == date(2026, 11, 6)
 
 
 def _schedule_setup(monkeypatch, rows):
+    monkeypatch.setattr(runner, "known_video_ids", lambda conn, key: [])
     monkeypatch.setattr(runner, "COLLECTORS", [("schedule", SimpleNamespace(
         collect=lambda ctx, s, e, **kw: {"yt_schedule": rows, "yt_channel_daily": [
             {"channel_key": "a2p", "day": date(2026, 11, 3), "views": 1}]}))])
     monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
-    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None: "x")
+    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None, **kw: "x")
     monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": "A"})
     calls = []
     monkeypatch.setattr(runner.store, "upsert", lambda conn, t, rows, pk, keep=(): calls.append(("upsert", t)) or len(rows))
@@ -248,7 +252,7 @@ def test_backfill_365_collects_channel_daily_in_slices(monkeypatch):
 
     monkeypatch.setattr(runner, "COLLECTORS", [("channel_daily", SimpleNamespace(collect=collect))])
     monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
-    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None: "x")
+    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None, **kw: "x")
     monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": "A"})
     res = runner.run_collect(["a2p"], days=365, dry_run=True, today=TODAY)
     assert calls == [(date(2025, 11, 7), date(2026, 5, 5)), (date(2026, 5, 6), date(2026, 11, 1)),
@@ -270,7 +274,7 @@ def test_backfill_365_queries_yearly_once(monkeypatch):
     an = Analytics()
     monkeypatch.setattr(runner, "COLLECTORS", [("channel_daily", channel_daily)])
     monkeypatch.setattr(runner, "analytics_for_key", lambda k: an)
-    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None: "x")
+    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None, **kw: "x")
     monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": "A"})
     res = runner.run_collect(["a2p"], days=365, dry_run=True, today=TODAY)
     # 3 slices x 3 daily queries, but the 365-day creatorContentType query runs only once
@@ -284,7 +288,7 @@ def test_only_limits_collectors(monkeypatch):
     mods = [(n, SimpleNamespace(collect=lambda ctx, s, e, n=n: ran.append(n) or {})) for n in ("channel_daily", "live")]
     monkeypatch.setattr(runner, "COLLECTORS", mods)
     monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
-    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None: "x")
+    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None, **kw: "x")
     monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": SimpleNamespace(is_live=True)})
     runner.run_collect(["a2p"], dry_run=True, today=TODAY, only=["live"])
     assert ran == ["live"]
@@ -297,7 +301,7 @@ def test_playlists_are_replaced_per_channel(monkeypatch):
     monkeypatch.setattr(runner, "COLLECTORS", [("playlists", SimpleNamespace(
         collect=lambda ctx, s, e: {"yt_playlist": [], "yt_playlist_item": []}))])
     monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
-    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None: "x")
+    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None, **kw: "x")
     monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": "A"})
     calls = []
     monkeypatch.setattr(runner.store, "upsert", lambda conn, t, rows, pk, keep=(): calls.append(("upsert", t)) or len(rows))
@@ -319,7 +323,7 @@ def test_run_log_records_collectors(monkeypatch):
     mods = [(n, SimpleNamespace(collect=lambda ctx, s, e: {})) for n in ("channel_daily", "live")]
     monkeypatch.setattr(runner, "COLLECTORS", mods)
     monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
-    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None: "x")
+    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None, **kw: "x")
     monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": SimpleNamespace(is_live=True)})
     logged = []
     monkeypatch.setattr(runner.store, "upsert", lambda conn, t, rows, pk, keep=(): logged.extend(rows) if t == "yt_run_log" else None)
@@ -334,7 +338,7 @@ def test_live_only_run_skips_non_live_channels(monkeypatch):
     mods = [(n, SimpleNamespace(collect=lambda ctx, s, e: {})) for n in ("channel_daily", "live", "schedule")]
     monkeypatch.setattr(runner, "COLLECTORS", mods)
     monkeypatch.setattr(runner, "analytics_for_key", lambda k: built.append(("analytics", k)) or "x")
-    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None: built.append(("data", k)) or "x")
+    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None, **kw: built.append(("data", k)) or "x")
     monkeypatch.setattr(runner, "load_channels", lambda: {
         "soombi": SimpleNamespace(is_live=True), "a2p": SimpleNamespace(is_live=False)})
     logged = []
@@ -356,7 +360,7 @@ def _two_project_setup(monkeypatch, projects, limit):
     ran = []
     metered = {}
 
-    def fake_data(key, meter=None):
+    def fake_data(key, meter=None, **kw):
         metered[key] = meter
         return SimpleNamespace(key=key, meter=meter)
 
@@ -406,10 +410,64 @@ def test_reach_rows_are_upserted_on_channel_day_video_not_replaced(monkeypatch):
         collect=lambda ctx, s, e, **kw: {"yt_reach_daily": [
             {"channel_key": "a2p", "day": date(2026, 11, 3), "video_id": "v", "impressions": 10, "ctr": 0.05}]}))])
     monkeypatch.setattr(runner, "analytics_for_key", lambda k: "x")
-    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None: "x")
+    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None, **kw: "x")
     monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": "A"})
     calls = []
     monkeypatch.setattr(runner.store, "upsert", lambda conn, t, rows, pk, keep=(): calls.append((t, tuple(pk))) or len(rows))
     monkeypatch.setattr(runner.store, "replace_channel", lambda *a, **kw: calls.append(("replace",)) or 0)
     runner.run_collect(["a2p"], dry_run=False, conn=object(), today=TODAY)
     assert ("yt_reach_daily", ("channel_key", "day", "video_id")) in calls and ("replace",) not in calls
+
+
+# ---- known video ids and the uploads shortfall ----
+
+def test_known_video_ids_reads_the_channels_stored_videos():
+    seen = []
+
+    def fake_fetch(conn, sql, params=()):
+        seen.append((sql, params))
+        return [{"video_id": "a"}, {"video_id": "b"}]
+
+    assert runner.known_video_ids("conn", "a2p", fetch=fake_fetch) == ["a", "b"]
+    assert "yt_video" in seen[0][0] and seen[0][1] == ("a2p",)
+    assert runner.known_video_ids(None, "a2p", fetch=lambda *a, **k: 1 / 0) == []
+
+
+def _known_setup(monkeypatch, names, shortfall=0):
+    got = []
+    mods = [(n, SimpleNamespace(collect=lambda ctx, s, e, **kw: {})) for n in names]
+    monkeypatch.setattr(runner, "COLLECTORS", mods)
+    monkeypatch.setattr(runner, "analytics_for_key", lambda k: "ok")
+    monkeypatch.setattr(runner, "data_for_key", lambda k, meter=None, known_ids=(): got.append(list(known_ids)) or
+                        SimpleNamespace(uploads_shortfall=shortfall))
+    monkeypatch.setattr(runner, "load_channels", lambda: {"a2p": SimpleNamespace(is_live=True)})
+    monkeypatch.setattr(runner, "known_video_ids", lambda conn, key: ["v1", "v2"])
+    monkeypatch.setattr(runner.store, "upsert", lambda conn, t, rows, pk, keep=(): len(rows))
+    return got
+
+
+@pytest.mark.parametrize("name", ["video", "video_daily", "schedule"])
+def test_runner_gives_the_known_ids_to_collectors_that_list_uploads(monkeypatch, name):
+    got = _known_setup(monkeypatch, [name])
+    runner.run_collect(["a2p"], dry_run=False, conn=object(), today=TODAY)
+    assert got == [["v1", "v2"]]
+
+
+def test_runner_does_not_read_known_ids_for_other_collectors(monkeypatch):
+    got = _known_setup(monkeypatch, ["live", "subs"])
+    monkeypatch.setattr(runner, "known_video_ids", lambda conn, key: 1 / 0)
+    runner.run_collect(["a2p"], dry_run=False, conn=object(), today=TODAY)
+    assert got == [[]]
+
+
+def test_uploads_shortfall_is_an_error_but_not_a_failed_channel(monkeypatch):
+    from ytops import render
+    _known_setup(monkeypatch, ["video"], shortfall=3)
+    res = runner.run_collect(["a2p"], dry_run=False, conn=object(), today=TODAY)
+    assert [(e["channel"], e["stage"], e["error"], e["missing"]) for e in res.errors] == [("a2p", "uploads", "UploadsShortfall", 3)]
+    assert "3" in res.errors[0]["message"] and not render._failed("uploads")
+
+
+def test_no_shortfall_no_error(monkeypatch):
+    _known_setup(monkeypatch, ["video"], shortfall=0)
+    assert runner.run_collect(["a2p"], dry_run=False, conn=object(), today=TODAY).errors == []

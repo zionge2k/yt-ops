@@ -945,3 +945,13 @@ def test_a_later_run_without_reach_cannot_clear_a_reach_error(monkeypatch):
     ]
     soombi = next(c for c in _build(monkeypatch, yt_run_log=log)["channels"] if c["key"] == "soombi")
     assert [e["stage"] for e in soombi["errors"]] == ["store:yt_reach_daily"]
+
+
+def test_uploads_error_belongs_to_the_video_collector_and_does_not_fail_the_card():
+    assert render._stage_owner("uploads") == "video" and not render._failed("uploads")
+    err = {"channel": "soombi", "stage": "uploads", "error": "UploadsShortfall", "missing": 2}
+    clean = {"started_at": NOW, "channels": ["soombi"], "collectors": ["video"], "errors": []}
+    bad = {"started_at": NOW - timedelta(days=1), "channels": ["soombi"], "collectors": ["video"], "errors": [err]}
+    live_only = {"started_at": NOW, "channels": ["soombi"], "collectors": ["live"], "errors": []}
+    assert render._channel_errors([clean, bad], "soombi") == []
+    assert [e["stage"] for e in render._channel_errors([live_only, bad], "soombi")] == ["uploads"]

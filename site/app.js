@@ -30,6 +30,8 @@ const kst = (iso) => {
 const mdhm = (iso) => { const p = kst(iso); return `${p.month}/${p.day} ${p.hour}:${p.minute}`; };
 /** "11/13 17시": a KST time, hour without a leading zero. */
 const atKst = (iso) => { const p = kst(iso); return `${p.month}/${p.day} ${+p.hour}시`; };
+/** "12/4": the KST date of a timestamp. */
+const mdKst = (iso) => { const p = kst(iso); return `${p.month}/${p.day}`; };
 /** "11/13 17시까지": the KST time a YouTube analytics day ends (the day itself is a Pacific-time day). */
 const untilKst = (iso) => `${atKst(iso)}까지`;
 // Accept "YYYY-MM-DD" and full ISO timestamps (render emits both); only the date part is used.
@@ -206,7 +208,7 @@ const cell = (label, val, t, note, attrs = "") => `<div class="cell"${attrs}><sp
 function compactCard(ch, b) {
   const m = b.monet || {}, a = b.as_of || {}, h = b.h48 || {}, s = b.schedule, r = b.reach7;
   const subT = tone(m.subs_pct, m.monetized), hrT = tone(m.hours_pct, m.monetized);
-  const one = (label, x) => `<span class="sl"><i>${label}</i> <b class="t-${x.status}">${fmt(x.n)}</b>${x.n ? `<small>(${ymd(x.last)}까지)</small>` : ""}</span>`;
+  const one = (label, x) => `<span class="sl"><i>${label}</i> <b class="t-${x.status}">${fmt(x.n)}</b>${x.n ? `<small>(${mdKst(x.last)}까지)</small>` : ""}</span>`;
   const sch = s ? one("롱폼", s.long) + one("쇼츠", s.short) : "—";
   const reachOk = r && !r.stale;
   // with an end time the label names it (always shown) and the cell gets the lag tooltip; old data.json keeps asOf

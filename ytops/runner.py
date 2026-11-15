@@ -18,6 +18,7 @@ from ytops.data import for_key as data_for_key
 from ytops.registry import load_channels, load_projects
 from ytops.reporting import for_key as reporting_for_key
 
+UPLOAD_LISTERS = ("video", "video_daily", "schedule")  # collectors that read DataClient.uploads()
 PRIMARY_KEYS: dict[str, list[str]] = {
     "yt_channel_daily": ["channel_key", "day"],
     "yt_yearly_minutes": ["channel_key", "as_of"],
@@ -46,6 +47,13 @@ class RunResult:
     latest_day: date | None
     errors: list[dict] = field(default_factory=list)
     counts: dict[str, int] = field(default_factory=dict)
+
+
+def known_video_ids(conn, key: str, fetch=store.fetch) -> list[str]:
+    """Videos stored for the channel in earlier runs; the uploads playlist alone can miss some (see DataClient)."""
+    if conn is None:
+        return []
+    return [r["video_id"] for r in fetch(conn, "select video_id from yt_video where channel_key = %s", (key,))]
 
 
 # Error stages that make a run's reach numbers untrustworthy for its channel (see reach_since).
@@ -182,6 +190,7 @@ def run_collect(
         keys = [k for k in keys if channels[k].is_live]
     days_seen: list[date] = []
     db = None if dry_run else conn
+    lists_uploads = any(n in UPLOAD_LISTERS for n, _ in collectors)
     wants_reach = any(n == "reach" for n, _ in collectors)  # other runs never touch the Reporting API
 
     for key in keys:
@@ -194,7 +203,8 @@ def run_collect(
         try:
             ctx = CollectContext(
                 key=key, channel=channels[key], analytics=analytics_for_key(key),
-                data=data_for_key(key, meter=meter), today=today, collected_at=datetime.now(timezone.utc),
+                data=data_for_key(key, meter=meter, known_ids=known_video_ids(db, key) if lists_uploads else ()),
+                today=today, collected_at=datetime.now(timezone.utc),
             )
         except Exception as e:  # auth / registry failure: skip this channel only
             result.errors.append(_error(key, "client", e))
@@ -218,6 +228,10 @@ def run_collect(
                     for r in rows:
                         r["first_seen_at"] = ctx.collected_at
                 collected.setdefault(table, []).extend(rows)
+        missing = getattr(ctx.data, "uploads_shortfall", 0)
+        if missing > 0:  # the card's numbers are fine; the list just needs `ytops discover`
+            result.errors.append({"channel": key, "stage": "uploads", "error": "UploadsShortfall", "missing": missing,
+                                  "message": f"{missing} videos of the channel were not found in the uploads list"})
         for table, rows in collected.items():
             if table == "yt_channel_daily":
                 days_seen += [r["day"] for r in rows]
