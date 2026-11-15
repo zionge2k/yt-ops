@@ -148,6 +148,14 @@ def test_collect_asks_only_for_reports_created_in_the_last_week():
     assert out == {"yt_reach_daily": []}
 
 
+def test_collect_with_since_asks_only_for_reports_created_after_it_minus_the_margin():
+    since = NOW - timedelta(days=2)
+    fake = FakeReporting("job1", [], {})
+    reach.collect(_ctx(fake), TODAY, TODAY, since=since)
+    assert reach.REREAD_MARGIN == timedelta(days=1)
+    assert fake.calls == ["job", ("reports", "job1", since - timedelta(days=1))]
+
+
 def test_collect_without_a_job_is_not_an_error_and_downloads_nothing():
     fake = FakeReporting(None, [_report("r1", "2026-11-09T00:00:00Z")], {})
     out = reach.collect(_ctx(fake), TODAY, TODAY)
@@ -192,7 +200,7 @@ def _runner_setup(monkeypatch, collectors, channels=("a2p",)):
 def test_runner_builds_a_reporting_client_per_channel(monkeypatch):
     seen = {}
     mods = [("channel_daily", SimpleNamespace(collect=lambda ctx, s, e, **kw: {})),
-            ("reach", SimpleNamespace(collect=lambda ctx, s, e: seen.setdefault(ctx.key, ctx.reporting) and {}))]
+            ("reach", SimpleNamespace(collect=lambda ctx, s, e, **kw: seen.setdefault(ctx.key, ctx.reporting) and {}))]
     built = _runner_setup(monkeypatch, mods, channels=("soombi", "a2p"))
     res = runner.run_collect(["soombi", "a2p"], dry_run=True, today=TODAY)
     assert built == ["soombi", "a2p"] and res.errors == []
@@ -202,7 +210,7 @@ def test_runner_builds_a_reporting_client_per_channel(monkeypatch):
 def test_runner_skips_the_reporting_client_when_reach_does_not_run(monkeypatch):
     # a live-only run must not refresh credentials for a client it never uses
     mods = [("live", SimpleNamespace(collect=lambda ctx, s, e: {})),
-            ("reach", SimpleNamespace(collect=lambda ctx, s, e: {}))]
+            ("reach", SimpleNamespace(collect=lambda ctx, s, e, **kw: {}))]
     built = _runner_setup(monkeypatch, mods)
     runner.run_collect(["a2p"], dry_run=True, today=TODAY, only=["live"])
     assert built == []
@@ -211,7 +219,7 @@ def test_runner_skips_the_reporting_client_when_reach_does_not_run(monkeypatch):
 def test_reporting_client_failure_is_a_reach_error_not_a_client_error(monkeypatch):
     ran = []
     mods = [("channel_daily", SimpleNamespace(collect=lambda ctx, s, e, **kw: ran.append("daily") or {})),
-            ("reach", SimpleNamespace(collect=lambda ctx, s, e: ran.append("reach") or {}))]
+            ("reach", SimpleNamespace(collect=lambda ctx, s, e, **kw: ran.append("reach") or {}))]
     _runner_setup(monkeypatch, mods)
 
     def boom(key):
@@ -224,7 +232,7 @@ def test_reporting_client_failure_is_a_reach_error_not_a_client_error(monkeypatc
 
 
 def test_reach_rows_reach_the_store_and_a_reach_error_does_not_stop_other_collectors(monkeypatch):
-    def failing(ctx, s, e):
+    def failing(ctx, s, e, **kw):
         raise RuntimeError("report download failed: HTTP 500")
 
     mods = [("reach", SimpleNamespace(collect=failing)),
@@ -234,3 +242,43 @@ def test_reach_rows_reach_the_store_and_a_reach_error_does_not_stop_other_collec
     res = runner.run_collect(["a2p"], dry_run=True, today=TODAY)
     assert [(e["stage"], e["error"]) for e in res.errors] == [("reach", "RuntimeError")]
     assert res.counts == {"yt_channel_daily": 1}
+
+
+def test_runner_passes_the_last_collected_at_of_the_channel_as_since(monkeypatch):
+    last = datetime(2026, 11, 9, 1, 0, tzinfo=timezone.utc)
+    seen = {}
+    mods = [("reach", SimpleNamespace(collect=lambda ctx, s, e, since=None: seen.setdefault(ctx.key, since) and {}))]
+    _runner_setup(monkeypatch, mods)
+    monkeypatch.setattr(runner, "reach_since", lambda conn, key: last)
+    monkeypatch.setattr(runner.store, "upsert", lambda conn, t, rows, pk, keep=(): len(rows))
+    runner.run_collect(["a2p"], dry_run=False, conn=object(), today=TODAY)
+    assert seen == {"a2p": last}
+
+
+def test_runner_dry_run_reads_everything_of_the_window(monkeypatch):
+    seen = []
+    mods = [("reach", SimpleNamespace(collect=lambda ctx, s, e, since="unset": seen.append(since) or {}))]
+    _runner_setup(monkeypatch, mods)
+    runner.run_collect(["a2p"], dry_run=True, today=TODAY)
+    assert seen == [None]
+
+
+def test_reach_since_is_the_max_collected_at_of_the_channel():
+    last = datetime(2026, 11, 9, 1, 0, tzinfo=timezone.utc)
+    seen = []
+
+    def fake_fetch(conn, sql, params=()):
+        seen.append((sql, params))
+        return [{"since": last}]
+
+    assert runner.reach_since("conn", "a2p", fetch=fake_fetch) == last
+    assert "max(collected_at)" in seen[0][0] and "yt_reach_daily" in seen[0][0] and seen[0][1] == ("a2p",)
+
+
+def test_reach_since_is_none_without_a_connection_or_rows():
+    def no_fetch(conn, sql, params=()):
+        raise AssertionError("must not query")
+
+    assert runner.reach_since(None, "a2p", fetch=no_fetch) is None
+    assert runner.reach_since("conn", "a2p", fetch=lambda c, s, p=(): []) is None
+    assert runner.reach_since("conn", "a2p", fetch=lambda c, s, p=(): [{"since": None}]) is None

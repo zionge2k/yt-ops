@@ -8,9 +8,12 @@ from datetime import date, datetime, timedelta, timezone
 from ytops.collect.context import CollectContext
 from ytops.videos import parse_ts
 
-# YouTube regenerates and backfills report files, so a run re-reads the reports created in the last
-# week; rows are upserted on (channel, day, video) and a later report wins an overlapping day.
+# First run (no stored rows yet): read the reports created in the last week.
 LOOKBACK_DAYS = 7
+# Later runs read only reports created after the last successful collection. YouTube stamps a regenerated or
+# backfilled report with a fresh createTime, so it is picked up again; rows are upserted on (channel, day, video)
+# and a later report wins an overlapping day. The margin covers a report that shows up in the list late.
+REREAD_MARGIN = timedelta(days=1)
 # CSV columns this collector reads; channel_id is optional and only checked against the expected channel.
 REQUIRED = ("date", "video_id", "video_thumbnail_impressions", "video_thumbnail_impressions_ctr")
 _EPOCH = datetime.min.replace(tzinfo=timezone.utc)
@@ -74,11 +77,12 @@ def parse_report(text: str, channel_key: str, collected_at: datetime,
     return rows
 
 
-def collect(ctx: CollectContext, start: date, end: date) -> dict[str, list[dict]]:
+def collect(ctx: CollectContext, start: date, end: date, *, since: datetime | None = None) -> dict[str, list[dict]]:
     job = ctx.reporting.reach_job_id()
     if job is None:  # the job is not created yet (or was deleted): nothing to read, not an error
         return {"yt_reach_daily": []}
-    reports = ctx.reporting.reports(job, ctx.collected_at - timedelta(days=LOOKBACK_DAYS))
+    created_after = since - REREAD_MARGIN if since else ctx.collected_at - timedelta(days=LOOKBACK_DAYS)
+    reports = ctx.reporting.reports(job, created_after)
     merged: dict[tuple[date, str], dict] = {}
     # oldest first, so a regenerated (later) report overwrites the rows of an earlier one
     for report in sorted(reports, key=lambda r: parse_ts(r.get("createTime")) or _EPOCH):

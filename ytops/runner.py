@@ -48,6 +48,14 @@ class RunResult:
     counts: dict[str, int] = field(default_factory=dict)
 
 
+def reach_since(conn, key: str, fetch=store.fetch) -> datetime | None:
+    """When the channel's reach rows were last collected; None without a DB or before the first run."""
+    if conn is None:
+        return None
+    rows = fetch(conn, "select max(collected_at) as since from yt_reach_daily where channel_key = %s", (key,))
+    return rows[0]["since"] if rows else None
+
+
 def subs_inputs(conn, key: str, fetch=store.fetch, current_rows=()):
     """Baseline / daily deltas / latest aggregated day for the exact-subscriber estimate.
 
@@ -119,6 +127,8 @@ def _run_collector(name, module, ctx, start, end, video_start, conn, current_row
         return {"yt_subs_snapshot": [subs.snapshot_row(ctx, ctx.data.channel_stats(), baseline, daily, latest_day)]}
     if name == "channel_daily":
         return _collect_channel_daily(module, ctx, start, end)
+    if name == "reach":
+        return module.collect(ctx, start, end, since=reach_since(conn, ctx.key))
     return module.collect(ctx, video_start if name == "video_daily" else start, end)
 
 

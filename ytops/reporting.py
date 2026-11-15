@@ -3,13 +3,30 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
-from typing import Callable, Iterator
+from typing import Callable, Iterator, TypeVar
 
-from ytops._retry import execute
+from googleapiclient.errors import HttpError
+
 from ytops.data import MAX_PAGES, PagingAborted
 
 REACH_TYPE = "channel_reach_basic_a1"  # thumbnail impressions + CTR per (date, channel, video)
 DOWNLOAD_TIMEOUT = 60  # seconds; requests has no default and a hung download would stall the whole run
+# The free quota is 60 requests a minute per project (measured 2026-11-15) and a download counts as two (302 + 200).
+RATE_WAITS = (20, 40)  # 429: a full minute in total, so the per-minute window has rolled over by the last try
+ERROR_WAITS = (1, 2)   # 5xx: a brief server hiccup
+
+T = TypeVar("T")
+
+
+def _wait_for(status: int, attempt: int) -> float | None:
+    """Seconds to wait before retry number `attempt` (0-based) of a call answered with `status`; None = give up."""
+    if status == 429:
+        waits = RATE_WAITS
+    elif status >= 500:
+        waits = ERROR_WAITS
+    else:
+        return None
+    return waits[attempt] if attempt < len(waits) else None
 
 
 class ReportDownloadError(RuntimeError):
@@ -33,6 +50,20 @@ class ReportingClient:
         self._session = session  # authorized requests session, used to download report files
         self._sleep = sleep
 
+    def _retrying(self, call: Callable[[], T]) -> T:
+        """Run call(), waiting and retrying while the answer is 429 or 5xx (see _wait_for)."""
+        attempt = 0
+        while True:
+            try:
+                return call()
+            except (HttpError, ReportDownloadError) as err:
+                status = err.status if isinstance(err, ReportDownloadError) else getattr(err.resp, "status", 0)
+                wait = _wait_for(status, attempt)
+                if wait is None:
+                    raise
+                self._sleep(wait)
+                attempt += 1
+
     def _pages(self, make_request, items_key: str) -> Iterator[dict]:
         """Response pages of a paged list; make_request(page_token) builds one request.
 
@@ -42,7 +73,7 @@ class ReportingClient:
         token = None
         seen: set[str] = set()
         for _ in range(MAX_PAGES):
-            page = execute(make_request(token), self._sleep)
+            page = self._retrying(make_request(token).execute)
             yield page
             token = page.get("nextPageToken")
             if not token or token in seen or not page.get(items_key):
@@ -73,9 +104,13 @@ class ReportingClient:
 
     def download(self, url: str) -> str:
         """Body of one report file (CSV text)."""
-        resp = self._session.get(url, timeout=DOWNLOAD_TIMEOUT)
-        if resp.status_code != 200:
-            raise ReportDownloadError(resp.status_code)
+        def fetch():
+            resp = self._session.get(url, timeout=DOWNLOAD_TIMEOUT)
+            if resp.status_code != 200:
+                raise ReportDownloadError(resp.status_code)
+            return resp
+
+        resp = self._retrying(fetch)
         # decode the raw bytes: `.text` guesses ISO-8859-1 for text/csv without a charset, which breaks a BOM
         return resp.content.decode("utf-8-sig")
 

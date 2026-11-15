@@ -118,3 +118,41 @@ def test_download_raises_on_non_200_without_echoing_the_url():
     with pytest.raises(ReportDownloadError) as e:
         client(session=session).download("https://example/report?secret=1")
     assert e.value.status == 404 and "404" in str(e.value) and "secret" not in str(e.value)
+    assert len(session.gets) == 1  # not retried
+
+
+def test_download_retries_429_on_the_rate_waits_and_then_succeeds():
+    sleeps = []
+    session = FakeSession(FakeResponse(429), FakeResponse(429), FakeResponse(200, "ok\n"))
+    assert client(session=session, sleeps=sleeps).download("u") == "ok\n"
+    assert sleeps == [20, 40] and len(session.gets) == 3
+
+
+def test_download_gives_up_after_three_429s():
+    sleeps = []
+    session = FakeSession(FakeResponse(429), FakeResponse(429), FakeResponse(429))
+    with pytest.raises(ReportDownloadError) as e:
+        client(session=session, sleeps=sleeps).download("u")
+    assert e.value.status == 429 and len(session.gets) == 3 and sleeps == [20, 40]
+
+
+def test_download_retries_a_5xx_briefly():
+    sleeps = []
+    session = FakeSession(FakeResponse(500), FakeResponse(200, "ok\n"))
+    assert client(session=session, sleeps=sleeps).download("u") == "ok\n"
+    assert sleeps == [1] and len(session.gets) == 2
+
+
+def test_list_calls_retry_429_on_the_rate_waits():
+    sleeps = []
+    svc = FakeService(jobs__list=[http_error(429), {"jobs": [{"id": "j", "reportTypeId": REACH_TYPE}]}])
+    assert client(svc, sleeps=sleeps).reach_job_id() == "j"
+    assert sleeps == [20]
+
+
+def test_wait_for_boundaries():
+    assert [reporting._wait_for(429, a) for a in range(3)] == [20, 40, None]
+    assert [reporting._wait_for(503, a) for a in range(3)] == [1, 2, None]
+    assert reporting._wait_for(500, 0) == 1
+    assert reporting._wait_for(404, 0) is None and reporting._wait_for(403, 0) is None
+    assert reporting._wait_for(499, 0) is None
