@@ -8,11 +8,12 @@ from datetime import date, datetime, timedelta, timezone
 from ytops.collect.context import CollectContext
 from ytops.videos import parse_ts
 
-# First run (no stored rows yet): read the reports created in the last week.
+# First run (no clean earlier run to resume from): read the reports created in the last week.
 LOOKBACK_DAYS = 7
-# Later runs read only reports created after the last successful collection. YouTube stamps a regenerated or
-# backfilled report with a fresh createTime, so it is picked up again; rows are upserted on (channel, day, video)
-# and a later report wins an overlapping day. The margin covers a report that shows up in the list late.
+# Later runs read only reports created after the last run that finished reach without an error. YouTube stamps
+# a regenerated or backfilled report with a fresh createTime, so it is picked up again; rows are upserted on
+# (channel, day, video) and a later report wins an overlapping day. The margin covers a report that shows up
+# in the list late.
 REREAD_MARGIN = timedelta(days=1)
 # CSV columns this collector reads; channel_id is optional and only checked against the expected channel.
 REQUIRED = ("date", "video_id", "video_thumbnail_impressions", "video_thumbnail_impressions_ctr")
@@ -77,18 +78,27 @@ def parse_report(text: str, channel_key: str, collected_at: datetime,
     return rows
 
 
-def collect(ctx: CollectContext, start: date, end: date, *, since: datetime | None = None) -> dict[str, list[dict]]:
+def _created_after(ctx: CollectContext, since: datetime | None, reread_days: int | None) -> datetime:
+    """Oldest report creation time to read: an explicit re-read window, else the bookmark, else the first-run week."""
+    if reread_days is not None:
+        return ctx.collected_at - timedelta(days=reread_days)
+    if since is not None:
+        return since - REREAD_MARGIN
+    return ctx.collected_at - timedelta(days=LOOKBACK_DAYS)
+
+
+def collect(ctx: CollectContext, start: date, end: date, *, since: datetime | None = None,
+            reread_days: int | None = None) -> dict[str, list[dict]]:
     job = ctx.reporting.reach_job_id()
     if job is None:  # the job is not created yet (or was deleted): nothing to read, not an error
         return {"yt_reach_daily": []}
-    created_after = since - REREAD_MARGIN if since else ctx.collected_at - timedelta(days=LOOKBACK_DAYS)
-    reports = ctx.reporting.reports(job, created_after)
+    reports = ctx.reporting.reports(job, _created_after(ctx, since, reread_days))
     merged: dict[tuple[date, str], dict] = {}
     # oldest first, so a regenerated (later) report overwrites the rows of an earlier one
     for report in sorted(reports, key=lambda r: parse_ts(r.get("createTime")) or _EPOCH):
         url = report.get("downloadUrl")
-        if not url:
-            continue
+        if not url:  # skipping would let the bookmark move past a report that is then never read
+            raise ValueError(f"report {report.get('id')} has no download url")
         for row in parse_report(ctx.reporting.download(url), ctx.key, ctx.collected_at,
                                  ctx.channel.channel_id):
             merged[(row["day"], row["video_id"])] = row

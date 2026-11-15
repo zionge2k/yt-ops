@@ -152,8 +152,13 @@ def test_collect_with_since_asks_only_for_reports_created_after_it_minus_the_mar
     since = NOW - timedelta(days=2)
     fake = FakeReporting("job1", [], {})
     reach.collect(_ctx(fake), TODAY, TODAY, since=since)
-    assert reach.REREAD_MARGIN == timedelta(days=1)
     assert fake.calls == ["job", ("reports", "job1", since - timedelta(days=1))]
+
+
+def test_collect_reread_days_wins_over_since():
+    fake = FakeReporting("job1", [], {})
+    reach.collect(_ctx(fake), TODAY, TODAY, since=NOW - timedelta(days=2), reread_days=30)
+    assert fake.calls == ["job", ("reports", "job1", NOW - timedelta(days=30))]
 
 
 def test_collect_without_a_job_is_not_an_error_and_downloads_nothing():
@@ -163,9 +168,10 @@ def test_collect_without_a_job_is_not_an_error_and_downloads_nothing():
     assert fake.calls == ["job"] and fake.downloads == []  # the report list is not even asked for
 
 
-def test_collect_skips_a_report_without_download_url():
+def test_collect_a_report_without_download_url_is_an_error_not_a_skip():
     fake = FakeReporting("job1", [{"id": "r1", "createTime": "2026-11-09T00:00:00Z"}], {})
-    assert reach.collect(_ctx(fake), TODAY, TODAY) == {"yt_reach_daily": []}
+    with pytest.raises(ValueError, match="r1 has no download url"):
+        reach.collect(_ctx(fake), TODAY, TODAY)
     assert fake.downloads == []
 
 
@@ -244,41 +250,98 @@ def test_reach_rows_reach_the_store_and_a_reach_error_does_not_stop_other_collec
     assert res.counts == {"yt_channel_daily": 1}
 
 
-def test_runner_passes_the_last_collected_at_of_the_channel_as_since(monkeypatch):
-    last = datetime(2026, 11, 9, 1, 0, tzinfo=timezone.utc)
-    seen = {}
-    mods = [("reach", SimpleNamespace(collect=lambda ctx, s, e, since=None: seen.setdefault(ctx.key, since) and {}))]
-    _runner_setup(monkeypatch, mods)
-    monkeypatch.setattr(runner, "reach_since", lambda conn, key: last)
-    monkeypatch.setattr(runner.store, "upsert", lambda conn, t, rows, pk, keep=(): len(rows))
-    runner.run_collect(["a2p"], dry_run=False, conn=object(), today=TODAY)
-    assert seen == {"a2p": last}
+STARTED = datetime(2026, 11, 9, 1, 0, tzinfo=timezone.utc)
 
 
-def test_runner_dry_run_reads_everything_of_the_window(monkeypatch):
-    seen = []
-    mods = [("reach", SimpleNamespace(collect=lambda ctx, s, e, since="unset": seen.append(since) or {}))]
-    _runner_setup(monkeypatch, mods)
-    runner.run_collect(["a2p"], dry_run=True, today=TODAY)
-    assert seen == [None]
+def _run(started_at, *, channels=("a2p",), errors=(), collectors=("reach",)):
+    return {"started_at": started_at, "channels": list(channels) if channels is not None else None,
+            "errors": list(errors), "collectors": list(collectors)}
 
 
-def test_reach_since_is_the_max_collected_at_of_the_channel():
-    last = datetime(2026, 11, 9, 1, 0, tzinfo=timezone.utc)
+def _since(runs, key="a2p"):
     seen = []
 
     def fake_fetch(conn, sql, params=()):
-        seen.append((sql, params))
-        return [{"since": last}]
+        seen.append(sql)
+        return runs
 
-    assert runner.reach_since("conn", "a2p", fetch=fake_fetch) == last
-    assert "max(collected_at)" in seen[0][0] and "yt_reach_daily" in seen[0][0] and seen[0][1] == ("a2p",)
+    return runner.reach_since("conn", key, fetch=fake_fetch), seen
 
 
-def test_reach_since_is_none_without_a_connection_or_rows():
+def _err(stage, channel="a2p"):
+    return {"channel": channel, "stage": stage, "error": "X", "message": ""}
+
+
+def test_reach_since_is_the_start_of_the_latest_clean_reach_run_of_the_channel():
+    got, seen = _since([_run(STARTED), _run(STARTED - timedelta(days=1))])
+    assert got == STARTED
+    assert "yt_run_log" in seen[0] and "reach" in seen[0] and "%" not in seen[0]
+
+
+def test_reach_since_steps_over_a_run_where_this_channels_reach_failed():
+    older = STARTED - timedelta(days=1)
+    for stage in runner.REACH_FAILED_STAGES:
+        assert _since([_run(STARTED, errors=[_err(stage)]), _run(older)])[0] == older
+    assert set(runner.REACH_FAILED_STAGES) == {"client", "budget", "reach", "store:yt_reach_daily"}
+
+
+def test_reach_since_ignores_other_channels_and_other_stages_errors():
+    runs = [_run(STARTED, errors=[_err("reach", "soombi"), _err("playlists"), _err("audience")])]
+    assert _since(runs)[0] == STARTED
+
+
+def test_reach_since_skips_runs_that_did_not_cover_the_channel():
+    older = STARTED - timedelta(days=1)
+    runs = [_run(STARTED, channels=("soombi",)), _run(STARTED, channels=None), _run(older)]
+    assert _since(runs)[0] == older
+
+
+def test_reach_since_is_none_without_a_connection_or_a_matching_run():
     def no_fetch(conn, sql, params=()):
         raise AssertionError("must not query")
 
     assert runner.reach_since(None, "a2p", fetch=no_fetch) is None
-    assert runner.reach_since("conn", "a2p", fetch=lambda c, s, p=(): []) is None
-    assert runner.reach_since("conn", "a2p", fetch=lambda c, s, p=(): [{"since": None}]) is None
+    assert _since([])[0] is None
+    assert _since([_run(STARTED, errors=[_err("reach")]), _run(STARTED, channels=("soombi",))])[0] is None
+
+
+def test_reach_since_does_not_depend_on_reach_rows():
+    # a clean run that found no rows still moves the bookmark: only yt_run_log is asked
+    got, seen = _since([_run(STARTED)])
+    assert got == STARTED and all("yt_reach_daily" not in sql for sql in seen)
+
+
+def test_runner_passes_the_bookmark_as_since(monkeypatch):
+    seen = {}
+    mods = [("reach", SimpleNamespace(collect=lambda ctx, s, e, since=None, reread_days=None:
+                                      seen.setdefault(ctx.key, (since, reread_days)) and {}))]
+    _runner_setup(monkeypatch, mods)
+    monkeypatch.setattr(runner, "reach_since", lambda conn, key: STARTED)
+    monkeypatch.setattr(runner.store, "upsert", lambda conn, t, rows, pk, keep=(): len(rows))
+    runner.run_collect(["a2p"], dry_run=False, conn=object(), today=TODAY)
+    assert seen == {"a2p": (STARTED, None)}
+
+
+def test_runner_passes_reread_days_and_skips_the_bookmark_query(monkeypatch):
+    seen = []
+    mods = [("reach", SimpleNamespace(collect=lambda ctx, s, e, since="unset", reread_days="unset":
+                                      seen.append((since, reread_days)) or {}))]
+    _runner_setup(monkeypatch, mods)
+
+    def boom(conn, key):
+        raise AssertionError("bookmark must not be read")
+
+    monkeypatch.setattr(runner, "reach_since", boom)
+    monkeypatch.setattr(runner.store, "upsert", lambda conn, t, rows, pk, keep=(): len(rows))
+    runner.run_collect(["a2p"], dry_run=False, conn=object(), today=TODAY, reach_reread_days=30)
+    runner.run_collect(["a2p"], dry_run=True, today=TODAY, reach_reread_days=30)  # dry-run honours it too
+    assert seen == [(None, 30), (None, 30)]
+
+
+def test_runner_dry_run_has_no_bookmark(monkeypatch):
+    seen = []
+    mods = [("reach", SimpleNamespace(collect=lambda ctx, s, e, since="unset", reread_days="unset":
+                                      seen.append((since, reread_days)) or {}))]
+    _runner_setup(monkeypatch, mods)
+    runner.run_collect(["a2p"], dry_run=True, today=TODAY)
+    assert seen == [(None, None)]

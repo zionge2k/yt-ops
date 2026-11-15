@@ -187,3 +187,13 @@ def test_render_missing_quota_file_gives_null_and_does_not_fail(monkeypatch, tmp
     assert got["quota"] is None and "경고" in capsys.readouterr().out
     cli.main(_render_args(tmp_path))
     assert got["quota"] is None
+
+
+def test_cli_reach_reread_days_is_passed_through(monkeypatch):
+    got = _capture(monkeypatch)
+    cli.main(["collect", "--channel", "chalna", "--only", "reach", "--reach-reread-days", "30", "--dry-run"])
+    assert got["kw"]["reach_reread_days"] == 30
+    cli.main(["collect", "--all", "--dry-run"])
+    assert got["kw"]["reach_reread_days"] is None
+    cli.main(["backfill", "--all", "--dry-run"])
+    assert got["kw"]["reach_reread_days"] is None

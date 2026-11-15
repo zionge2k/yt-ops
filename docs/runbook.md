@@ -61,6 +61,9 @@ ytops collect --all --only live
 ytops backfill --all --days 365
 # 새 표 적용(멱등) — 맏이만: db/migrations/2026-11-07-v3.sql 과 같은 정의가 schema.sql 에 있다
 ytops schema --apply
+# 파서 수정 · 표 복구 뒤 reach 보고서 다시 읽기: 저장된 책갈피를 무시하고 최근 30일에 생긴 것을 읽는다. 채널 하나씩 돌린다
+ytops collect --channel soombi --only reach --reach-reread-days 30
+# 파일이 많으면 분당 60건 한도 때문에 중간중간 20~40초씩 기다린다(429 재시도) — 멈춘 게 아니다
 ```
 
 - PC 에서는 `ytops` 대신 `python -m ytops ...`.

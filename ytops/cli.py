@@ -48,7 +48,7 @@ def _is_quota_error(e: dict) -> bool:
 def _collect(args, *, days: int, video_days: int) -> int:
     conn = None if args.dry_run else store.connect()
     res = runner.run_collect(_keys(args), days=days, video_days=video_days, dry_run=args.dry_run, conn=conn,
-                             only=_only(args))
+                             only=_only(args), reach_reread_days=getattr(args, "reach_reread_days", None))
     print(f"run {res.run_id} latest_day={res.latest_day} errors={len(res.errors)} counts={res.counts}")
     for e in res.errors:
         print(f"  ERROR {e['channel']} {e['stage']}: {e['error']}: {e['message']}")
@@ -110,6 +110,9 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--days", type=int, default=10)
     c.add_argument("--dry-run", action="store_true")
     c.add_argument("--only", type=_only_names, help="comma-separated collector names (e.g. live)")
+    c.add_argument("--reach-reread-days", type=int, default=None,
+                   help="ignore the saved reach bookmark and re-read the reach reports created in the last N days "
+                        "(use after a parser fix or a table repair)")
     b = sub.add_parser("backfill")
     _targets(b)
     b.add_argument("--days", type=int, default=185,
