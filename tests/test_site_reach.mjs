@@ -53,41 +53,31 @@ test("sample.json: one channel has detail.reach with the row shape the renderer 
   assert.ok(r.all.some((v) => v.kind === "short") && ["fix", "push", "ok"].every((x) => r.all.some((v) => v.verdict === x)));
 });
 
-test("board card shows the 7-day impressions and ctr after the 48-hour line", () => {
+// The compact card (2026-11-09) shows the two reach figures as plain cells: the value alone, coloured by its
+// status. The impressions cell sits right before the ctr cell, so it is found from there, not by its label.
+const CTR_CELL = '<span class="k">클릭률</span>';
+const GREY_DASH = '<span class="v n t-grey">—</span>';
+const bothDashes = (html) => new RegExp(`${GREY_DASH}</div>\\s*<div class="cell">${CTR_CELL}${GREY_DASH}`).test(html);
+
+test("board card shows the 7-day impressions and ctr cells after the 48-hour cell, coloured by status", () => {
   const data = clone();
   data.board.soombi.reach7 = { impressions: 123456, ctr: 0.041, impressions_pct: 18.04, ctr_pp: -1.23,
     impressions_status: "red", ctr_status: "blue", as_of: "2026-11-03" };
   const html = card(board(data), "숨비찰나");
-  assert.ok(html.indexOf("48시간 유효시청") < html.indexOf("7일 썸네일 노출"));
-  assert.ok(html.indexOf("7일 썸네일 노출") < html.indexOf("7일 클릭률"));
-  assert.ok(html.indexOf("7일 클릭률") < html.indexOf('class="live'));
-  assert.ok(html.includes('<span class="num n">12.3<small>만</small></span><span class="chg n t-red">▲ 18%</span>'));
-  assert.ok(html.includes('<span class="num n">4.1<small>%</small></span><span class="chg n t-blue">▼ 1.2%p</span>'));
-  assert.ok(!html.includes("보고서 쌓이는 중"));
+  const h48 = html.indexOf('<span class="k">48시간');
+  assert.ok(h48 >= 0 && h48 < html.indexOf(CTR_CELL));
+  assert.ok(html.indexOf(CTR_CELL) < html.indexOf('class="live'));
+  assert.match(html, /<span class="v n t-red">12\.3<small>만<\/small><\/span><\/div>\s*<div class="cell"><span class="k">클릭률<\/span><span class="v n t-blue">4\.1<small>%<\/small><\/span>/);
+  assert.ok(!bothDashes(html));
 });
 
-test("board card: the label says up to which day the 7 days run", () => {
-  const html = card(board(), "숨비찰나");
-  assert.ok(html.includes('<span class="k">7일 썸네일 노출 · ~11/3</span>'));
-  assert.ok(html.includes('<span class="k">7일 클릭률</span>'));
-});
-
-test("board card: a window shorter than 7 days at launch says the real number of days", () => {
-  const data = clone();
-  data.board.soombi.reach7.window_days = 3;
-  const html = card(board(data), "숨비찰나");
-  assert.ok(html.includes("3일 썸네일 노출 · ~11/3") && html.includes('<span class="k">3일 클릭률</span>'));
-  assert.ok(!html.includes("7일 썸네일 노출"));
-});
-
-test("a stopped reach feed shows dashes and the last day, on the card and in the detail", () => {
+test("a stopped reach feed shows grey dashes on the card and the last day in the detail", () => {
   const data = clone();
   data.board.soombi.reach7 = { stale: true, as_of: "2026-10-01" };
   data.detail.soombi.reach = { stale: true, as_of: "2026-10-01" };
   const html = card(board(data), "숨비찰나");
-  assert.ok(html.includes('<span class="k">7일 썸네일 노출</span><span class="num n">—</span></div>'));
-  assert.ok(html.includes('<div class="note-grey">보고서가 멈췄어요 · 마지막 10/1</div>'));
-  assert.ok(!html.includes("보고서 쌓이는 중") && !html.includes("NaN") && !html.includes("undefined"));
+  assert.ok(bothDashes(html));
+  assert.ok(!html.includes("NaN") && !html.includes("undefined"));
   const detail = channel("soombi", data);
   assert.ok(detail.includes('<h3>썸네일 성적</h3><p class="note-grey">보고서가 멈췄어요 · 마지막 10/1</p>'));
   assert.ok(!detail.includes("쇼츠 vs 롱폼") && !detail.includes("NaN") && !detail.includes("undefined"));
@@ -100,39 +90,38 @@ test("channel detail: a short window is labelled with its real days", () => {
   assert.ok(html.includes('<span class="asof">5일 · 11/3까지</span>') && html.includes("5일 노출 합계"));
 });
 
-test("board card: under ten thousand stays a plain number, small changes keep a decimal", () => {
+test("board card: under ten thousand stays a plain number, the ctr keeps one decimal", () => {
   const data = clone();
   data.board.soombi.reach7 = { impressions: 9876, ctr: 0.0523, impressions_pct: 4.26, ctr_pp: 0.4,
     impressions_status: "purple", ctr_status: "purple", as_of: "2026-11-03" };
   const html = card(board(data), "숨비찰나");
-  assert.ok(html.includes('<span class="num n">9,876</span><span class="chg n t-purple">▲ 4.3%</span>'));
-  assert.ok(html.includes('5.2<small>%</small></span><span class="chg n t-purple">▲ 0.4%p</span>'));
+  assert.ok(html.includes('<span class="v n t-purple">9,876</span>'));
+  assert.ok(html.includes(`${CTR_CELL}<span class="v n t-purple">5.2<small>%</small></span>`));
 });
 
-test("board card without reach data shows dashes and the waiting note", () => {
+test("board card without reach data shows grey dashes", () => {
   const data = clone();
   data.board.a2p.reach7 = null;
   delete data.board.soombi.reach7;   // a data.json from before this feature has no key at all
   for (const display of ["Adagio to Presto", "숨비찰나"]) {
     const html = card(board(data), display);
-    assert.ok(html.includes('<span class="k">7일 썸네일 노출</span><span class="num n">—</span></div>'), display);
-    assert.ok(html.includes('<span class="k">7일 클릭률</span><span class="num n">—</span></div>'), display);
-    assert.ok(html.includes('<div class="note-grey">보고서 쌓이는 중</div>'), display);
+    assert.ok(bothDashes(html), display);
+    assert.ok(!html.includes("NaN") && !html.includes("undefined"), display);
   }
 });
 
-test("board card: unknown change is a dash in grey, a flat change has no arrow", () => {
+test("board card: impressions without a ctr show the number and a grey dash", () => {
   const data = clone();
-  data.board.soombi.reach7 = { impressions: 5000, ctr: null, impressions_pct: null, ctr_pp: 0,
-    impressions_status: "grey", ctr_status: "purple", as_of: "2026-11-03" };
+  data.board.soombi.reach7 = { impressions: 5000, ctr: null, impressions_pct: null, ctr_pp: null,
+    impressions_status: "grey", ctr_status: "grey", as_of: "2026-11-03" };
   const html = card(board(data), "숨비찰나");
-  assert.ok(html.includes('<span class="num n">5,000</span><span class="chg n t-grey">—</span>'));
-  assert.ok(html.includes('<span class="num n">—</span><span class="chg n t-purple">0%p</span>'));
+  assert.ok(html.includes('<span class="v n t-grey">5,000</span>'));
+  assert.ok(html.includes(`${CTR_CELL}${GREY_DASH}`));
 });
 
-test("a failed-collection card is unchanged: no reach lines", () => {
+test("a failed-collection card has no reach cells", () => {
   const html = card(board(), "groove.wav");
-  assert.ok(!html.includes("썸네일 노출") && !html.includes("보고서 쌓이는 중"));
+  assert.ok(!html.includes(CTR_CELL) && !html.includes('class="cell"'));
 });
 
 test("channel detail: reach panels come right after 수익창출", () => {
