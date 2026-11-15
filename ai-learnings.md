@@ -40,3 +40,9 @@
 - 알림 정책은 `alertPolicies` REST 로 만들면 gcloud alpha/beta 컴포넌트가 필요 없다. 필터 안에서는 `resource.label.x` · `metric.label.x`(단수), 시계열 조회 groupBy 에서는 `resource.labels.x`(복수) — 둘이 다르다. alignmentPeriod 86400s 도 정책에서 받아들여졌다.
 - `documentation.subject` 를 주면 메일 제목이 그 글이 된다. 숨비가 받을 메일은 제목에 한국어로 무슨 일인지 적는다.
 - Monitoring API `timeSeries.list` 는 **호출 주체 프로젝트에 결제 계정이 없으면 403 "This API method requires billing to be enabled"** — 무료 구간·한도와 무관. gcloud(Google 소유 클라이언트)로는 되고, 우리 프로젝트의 서비스 계정(WIF 포함)으로는 안 된다. 결제 없이 CI 에서 읽으려면 gcloud 사용자 자격증명(`~/.config/gcloud/legacy_credentials/<계정>/adc.json`, type authorized_user, quota_project 없음)을 비밀값으로 쓴다. `gcloud auth application-default login` 파일은 quota_project_id 가 들어가 같은 403 을 낸다.
+
+## 2026-11-15 — Reporting API 는 분당 60건
+- 한도는 프로젝트당 `FreeQuotaRequestsPerMinutePerProject` = 60, 하루 20,000. 보고서 파일 다운로드 한 번이 Monitoring `api/request_count` 에 302 + 200 두 건으로 찍힌다. 한도 값은 Monitoring `quota/limit` 을 `resource.labels.service="youtubereporting.googleapis.com"` 로 읽으면 나온다.
+- job 을 만들면 다음 날 과거 30일치 보고서 30개가 한꺼번에 생긴다. "최근 N일에 생긴 보고서를 다시 읽기"는 이 묶음을 N일 동안 매번 다시 받게 만든다 → 마지막 성공 시각 뒤에 생긴 것만 읽는다.
+- 총량 한도(하루)와 속도 한도(분당)는 처방이 다르다. 속도 한도는 프로젝트를 늘려도 그대로다.
+- Actions 실패 원인은 `gh run view <id> --log | grep -E 'latest_day=|  ERROR '`. `--log-failed` 는 마지막 알림 단계만 보여 준다.
