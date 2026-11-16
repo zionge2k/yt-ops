@@ -222,7 +222,7 @@ function compactCard(ch, b) {
     ${cell(dated("시간", a.hours), fmt(m.hours), hrT, "", lag)}
     ${cell(dated("48시간", a.h48), isNull(h.cur) ? "—" : fmt(h.cur, 0), h.status || "grey", isNull(h.pct) ? "" : pct(h.pct), h48Tip)}
     <div class="cell"><span class="k">예약현황</span><span class="v sch n">${sch}</span></div>
-    ${cell("노출률", reachOk ? bigNum(r.impressions) : "—", reachOk ? r.impressions_status : "grey")}
+    ${cell("노출수", reachOk ? bigNum(r.impressions) : "—", reachOk ? r.impressions_status : "grey")}
     ${cell("클릭률", reachOk ? ctrNum(r.ctr) : "—", reachOk ? r.ctr_status : "grey")}
   </div>`;
 }

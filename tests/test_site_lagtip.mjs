@@ -121,7 +121,7 @@ test("a collect-failed card and the other cells never get the tooltip", () => {
   assert.ok(!card(board(data), "groove.wav").includes("data-tip"));
   const html = card(board(data), "숨비찰나");
   assert.equal(html.split("data-tip").length - 1, 2);  // hours (lag) and 48-hour (h48)
-  for (const label of ["구독자", "노출률", "클릭률", "예약현황"]) assert.ok(!cellOf(html, label).includes("data-tip"), label);
+  for (const label of ["구독자", "노출수", "클릭률", "예약현황"]) assert.ok(!cellOf(html, label).includes("data-tip"), label);
 });
 
 test("the header says the confirmed analytics end in KST when latest_until is there, else the old day", () => {
