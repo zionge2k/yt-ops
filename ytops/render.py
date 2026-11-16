@@ -524,15 +524,27 @@ def _reach_by_video(rows, end, days) -> dict[str, tuple]:
 
 
 def _reach_detail(rows, end, channel_key, videos, per_video, up, down) -> dict:
-    """Detail panel data: 28-day summary, this week's uploads, the most shown videos, shorts vs long ctr."""
+    """Detail panel data: 28-day summary, shorts vs long ctr, and this week's uploads and the most shown videos.
+
+    Shorts and long-form (long, live archive, unknown, not in the catalog) are listed apart and each is judged
+    against its own channel ctr and median impressions: shorts live on a different scale.
+    """
     stats = _reach_by_video(rows, end, REACH_WINDOW_DAYS)
-    channel_ctr = _reach_window(rows, end, REACH_WINDOW_DAYS)[1]
-    median = statistics.median(i for i, _ in stats.values()) if stats else None
+
+    def is_short(vid):
+        return (videos.get(vid) or {}).get("content_kind") == "short"
+
+    baseline = {}
+    for short in (True, False):
+        group = {vid: st for vid, st in stats.items() if is_short(vid) == short}
+        baseline[short] = (_weighted_ctr(group.values()),
+                           statistics.median(i for i, _ in group.values()) if group else None)
 
     def row(vid):
         v = videos.get(vid) or {}
         published = _kst_date(v.get("published_at"))
         impressions, ctr = stats.get(vid, (None, None))
+        channel_ctr, median = baseline[is_short(vid)]
         verdict = _reach_verdict(impressions, ctr, (end - published).days if published else None, channel_ctr, median)
         return {"video_id": vid, "title": v.get("title"), "published_at": published, "kind": v.get("content_kind"),
                 "impressions": impressions, "ctr": _round(ctr, 5), "views": (per_video.get(vid) or {}).get("views"),
@@ -545,13 +557,16 @@ def _reach_detail(rows, end, channel_key, videos, per_video, up, down) -> dict:
         ((v["published_at"], vid) for vid, v in videos.items()
          if v.get("channel_key") == channel_key and week_start <= (_kst_date(v["published_at"]) or date.min) <= end),
         reverse=True)
-    most_shown = sorted(stats, key=lambda vid: (-stats[vid][0], vid))[:REACH_TOP_N]
+    most_shown = sorted(stats, key=lambda vid: (-stats[vid][0], vid))
 
     def kind_ctr(kind):
         return _round(_weighted_ctr(stats[vid] for vid in stats if (videos.get(vid) or {}).get("content_kind") == kind), 5)
 
     return {"days": REACH_WINDOW_DAYS, **_reach_summary(rows, end, REACH_WINDOW_DAYS, up, down),
-            "this_week": [row(vid) for _, vid in this_week], "all": [row(vid) for vid in most_shown],
+            "this_week": [row(vid) for _, vid in this_week if not is_short(vid)],
+            "all": [row(vid) for vid in most_shown if not is_short(vid)][:REACH_TOP_N],
+            "this_week_shorts": [row(vid) for _, vid in this_week if is_short(vid)],
+            "all_shorts": [row(vid) for vid in most_shown if is_short(vid)][:REACH_TOP_N],
             "shorts_ctr": kind_ctr("short"), "long_ctr": kind_ctr("long")}
 
 

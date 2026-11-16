@@ -404,10 +404,21 @@ function reachTable(rows) {
   return `<div class="reach-wrap"><table class="reach"><thead><tr><th>영상</th><th>올린 날</th><th class="n">노출</th><th class="n">클릭률</th><th class="n">조회</th><th>한마디</th></tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
+let showShorts = false;  // memory only: kept while moving between channels, hidden again after a reload
+
 function reachPanel(r) {
   if (!r) return `<section class="panel"><h3>썸네일 성적</h3><p class="note-grey">${REACH_WAITING}</p></section>`;
   if (r.stale) return `<section class="panel"><h3>썸네일 성적</h3><p class="note-grey">${reachStopped(r)}</p></section>`;
   const week = r.this_week || [], all = r.all || [];
+  const weekShorts = r.this_week_shorts || [], allShorts = r.all_shorts || [];
+  const shortCount = new Set([...weekShorts, ...allShorts].map((v) => v.video_id)).size;
+  const toggle = shortCount
+    ? `<button type="button" class="tog" data-toggle="shorts" aria-expanded="${showShorts}">${showShorts ? "쇼츠 숨기기" : `쇼츠 보기 · ${fmt(shortCount)}편`}</button>` : "";
+  const shortsBlock = shortCount && showShorts ? `
+    <h4 class="sub">이번 주 올린 쇼츠 · ${fmt(weekShorts.length)}편</h4>
+    ${weekShorts.length ? reachTable(weekShorts) : `<p class="note-grey">이번 주 올린 쇼츠 없음</p>`}
+    <h4 class="sub">지난 ${fmt(r.days)}일 쇼츠 · 노출 많은 순</h4>
+    ${allShorts.length ? reachTable(allShorts) : `<p class="note-grey">노출된 쇼츠 없음</p>`}` : "";
   const n = isNull(r.window_days) ? r.days : Math.min(r.days, r.window_days);
   return `<section class="panel"><h3>썸네일 성적<span class="asof">${fmt(n)}일 · ${ymd(r.as_of)}까지</span></h3>
     <div class="sumrow">
@@ -418,6 +429,7 @@ function reachPanel(r) {
     ${week.length ? reachTable(week) : `<p class="note-grey">이번 주 올린 영상 없음</p>`}
     <h4 class="sub">지난 ${fmt(r.days)}일 전체 · 노출 많은 순</h4>
     ${all.length ? reachTable(all) : `<p class="note-grey">노출된 영상 없음</p>`}
+    ${toggle}${shortsBlock}
     <p class="qwhen n">클릭률 = 썸네일을 본 사람 중 누른 비율 · 채널 클릭률은 총 클릭 ÷ 총 노출 · 유튜브가 2~3일 늦게 줘요</p></section>`;
 }
 
@@ -471,7 +483,8 @@ function renderErrors() {
   return `<section class="errs"><h3>오류</h3><ul class="errors">${items}</ul></section>`;
 }
 
-function render() {
+/** keepScroll: a redraw from a button on the page must not jump to the top (a hash move does). */
+function render({ keepScroll = false } = {}) {
   if (!DATA) return;
   const r = route();
   let body;
@@ -489,9 +502,15 @@ function render() {
     window.scrollTo(0, y);
   }));
   app.querySelectorAll("[data-tip]").forEach(bindTip);
+  app.querySelectorAll('[data-toggle="shorts"]').forEach((btn) => btn.addEventListener("click", () => {
+    const y = window.scrollY;
+    showShorts = !showShorts;
+    render({ keepScroll: true });
+    window.scrollTo(0, y);
+  }));
   const rfBtn = document.getElementById("refresh");
   if (rfBtn && !sampleMode) rfBtn.addEventListener("click", startRefresh);
-  if (r.view === "ch") window.scrollTo(0, 0);
+  if (r.view === "ch" && !keepScroll) window.scrollTo(0, 0);
 }
 
 // ---------- refresh now ----------

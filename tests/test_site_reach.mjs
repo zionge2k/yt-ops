@@ -47,10 +47,13 @@ test("sample.json: one channel has detail.reach with the row shape the renderer 
   const r = withReach[0][1].reach;
   assert.equal(r.days, 28);
   for (const k of ["impressions", "ctr", "impressions_pct", "ctr_pp", "impressions_status", "ctr_status", "as_of", "window_days",
-    "this_week", "all", "shorts_ctr", "long_ctr"]) assert.ok(k in r, k);
+    "this_week", "all", "this_week_shorts", "all_shorts", "shorts_ctr", "long_ctr"]) assert.ok(k in r, k);
   assert.ok(r.this_week.length > 0 && r.all.length > 0 && r.all.length <= 12);
-  for (const row of [...r.this_week, ...r.all]) assert.deepEqual(Object.keys(row).sort(), [...ROW_KEYS].sort());
-  assert.ok(r.all.some((v) => v.kind === "short") && ["fix", "push", "ok"].every((x) => r.all.some((v) => v.verdict === x)));
+  assert.ok(r.this_week_shorts.length > 0 && r.all_shorts.length > 0);
+  for (const row of [...r.this_week, ...r.all, ...r.this_week_shorts, ...r.all_shorts]) assert.deepEqual(Object.keys(row).sort(), [...ROW_KEYS].sort());
+  // shorts are listed apart: the long-form lists hold none, the shorts lists only shorts
+  assert.ok([...r.this_week, ...r.all].every((v) => v.kind !== "short") && [...r.this_week_shorts, ...r.all_shorts].every((v) => v.kind === "short"));
+  assert.ok(["fix", "ok"].every((x) => r.all.some((v) => v.verdict === x)) && r.all_shorts.some((v) => v.verdict === "push"));
 });
 
 // The compact card (2026-11-09) shows the two reach figures as plain cells: the value alone, coloured by its
