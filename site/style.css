@@ -209,7 +209,7 @@ p.qwhen { margin: 0 0 var(--gap); }
 .sch .sl small { font-size: 14px; color: var(--ink-3); font-weight: 600; margin-left: 4px; }
 
 /* lag tooltip: opens under its cell (no gap to lose the hover); the right-hand column opens leftwards */
-.cell[data-tip] { position: relative; cursor: help; }
+.cell[data-tip], h3[data-tip] { position: relative; cursor: help; }
 .tip { position: absolute; top: 100%; left: 0; z-index: 5; width: 280px; max-width: calc(100vw - 24px); box-sizing: border-box; padding: 12px 36px 12px 14px; border-radius: 10px; background: var(--ink); color: #fff; font-size: 15px; font-weight: 500; line-height: 1.45; white-space: normal; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25); cursor: default; }
 .cell:nth-child(even) .tip { left: auto; right: 0; }
 .tip b { display: block; font-size: 16px; margin-bottom: 4px; }

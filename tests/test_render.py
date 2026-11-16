@@ -321,10 +321,51 @@ def test_watch_trend_windows(monkeypatch):
     assert e["total"] is None and e["status"] == "grey" and len(e["series"]) == 7
 
 
+def _top_in(spec, kind="long", extra=None):
+    """spec: {video_id: (minutes, views)}; all long-form unless `extra` says otherwise."""
+    per_video = {v: {"minutes": m, "views": w} for v, (m, w) in spec.items()}
+    videos = {v: {"content_kind": kind, "title": v, "thumbnail_url": None, "published_at": None} for v in spec}
+    videos.update(extra or {})
+    return [r["video_id"] for r in render._top(per_video, videos, kind)]
+
+
+def test_top_ranks_by_views_rank_plus_minutes_rank():
+    # A: most minutes, fewest views; B: most views, fewest minutes; C and D sit in the middle.
+    spec = {"A": (1000, 10), "B": (10, 1000), "C": (500, 500), "D": (400, 400)}
+    # rank sums: C 1+1=2, A 0+3=3, B 3+0=3, D 2+2=4; A and B tie, the one with more minutes first
+    assert _top_in(spec) == ["C", "A", "B"]
+
+
+def test_top_tied_values_share_a_rank():
+    # minutes X = Y = 100 both rank 0 (Z ranks 2); views Y 9 > X 5 > Z 1
+    assert _top_in({"X": (100, 5), "Y": (100, 9), "Z": (50, 1)}) == ["Y", "X", "Z"]
+    # the same value in a tie must not push the next one down by two: P, Q tie on minutes, R next is rank 2
+    assert _top_in({"P": (100, 3), "Q": (100, 2), "R": (90, 1), "S": (10, 4)}) == ["P", "Q", "S"]
+
+
+def test_top_full_tie_falls_back_to_minutes_then_views_then_id():
+    assert _top_in({"b": (10, 5), "a": (10, 5)}) == ["a", "b"]
+    # rank sums tie (1+0 vs 0+1): minutes decide even though the other has more views
+    assert _top_in({"m": (200, 1), "v": (100, 9)}) == ["m", "v"]
+
+
+def test_top_with_fewer_than_three_candidates_and_other_kinds():
+    assert _top_in({"A": (5, 1)}) == ["A"] and _top_in({}) == []
+    short = {"S": {"content_kind": "short", "title": "S"}}
+    assert _top_in({"A": (5, 1), "S": (900, 900)}, extra=short) == ["A"]
+    assert _top_in({"A": (5, 1)}, extra={"A": {"content_kind": "long", "title": "A"}, "G": {"content_kind": "long"}}) == ["A"]
+
+
+def test_top_keeps_the_row_shape():
+    got = render._top({"A": {"minutes": 90.0, "views": 7}}, {"A": {"content_kind": "long", "title": "t", "thumbnail_url": "u",
+                                                                  "published_at": None}}, "long")
+    assert got == [{"video_id": "A", "title": "t", "thumb": "u", "published_at": None, "hours": 1.5, "views": 7}]
+
+
 def test_detail_top_videos_and_genres(monkeypatch):
     dt = _build(monkeypatch)["detail"]["soombi"]
     assert set(dt) == {"monet", "audience", "top_long", "top_live", "subs_sources", "genres", "reach"}
-    assert [v["video_id"] for v in dt["top_long"]] == ["L1", "L2", "L3"]  # top 3 by minutes, shorts excluded
+    assert [v["video_id"] for v in dt["top_long"]] == ["L1", "L2", "V_FIX"]  # shorts excluded; V_FIX has few minutes but 55 views, which beats L3 (30 min, 1 view)
     assert dt["top_long"][0] == {"video_id": "L1", "title": "t-L1", "thumb": "https://x/L1.jpg",
                                  "published_at": "2026-10-01T00:00:00+00:00", "hours": 11.0, "views": 15}
     assert [v["video_id"] for v in dt["top_live"]] == ["A1"] and dt["top_live"][0]["hours"] == 5.0

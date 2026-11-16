@@ -259,7 +259,14 @@ function h48Tip({ from, until, prevFrom, pct: pctText }) {
   return tipShell("언제부터 언제까지인가요?", lines);
 }
 
-const TIPS = { lag: (d) => lagTip(d.until), h48: (d) => h48Tip(d) };
+function topTip() {
+  return tipShell("어떻게 골랐나요?", [
+    "최근 28일 조회 순위와 시청시간 순위를 더해 작은 순으로 3편이에요.",
+    "같으면 시청시간이 많은 영상이 앞이에요.",
+    "쇼츠는 빼요."]);
+}
+
+const TIPS = { lag: (d) => lagTip(d.until), h48: (d) => h48Tip(d), top: () => topTip() };
 
 /** Show the tip of kind el.dataset.tip after TIP_DELAY_MS of hovering; leaving cancels or hides it, the x closes that kind. */
 function bindTip(el) {
@@ -386,7 +393,7 @@ function videoList(title, list) {
       ${v.thumb ? `<img src="${esc(v.thumb)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'thumb'}))">` : `<span class="thumb"></span>`}
       <div class="vi"><span class="vt">${esc(v.title || v.video_id)}</span>
       <span class="vm n">${ymd(v.published_at)} · ${fmt(v.hours, 1)}시간 · 조회 ${fmt(v.views)}</span></div></li>`).join("");
-  return `<section class="panel"><h3>${title}<span class="asof">28일</span></h3>${items ? `<ul class="vids">${items}</ul>` : `<div class="nochart">—</div>`}</section>`;
+  return `<section class="panel"><h3 data-tip="top">${title}<span class="asof">28일 · 조회+시청시간</span></h3>${items ? `<ul class="vids">${items}</ul>` : `<div class="nochart">—</div>`}</section>`;
 }
 
 const VERDICT = {

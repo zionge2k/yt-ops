@@ -396,10 +396,19 @@ def _per_video(vd_rows) -> dict[str, dict]:
     return out
 
 
+def _ranks(values) -> dict:
+    """Competition rank of each value, biggest first: 0 for the largest, ties share a rank (100, 100, 90 -> 0, 0, 2)."""
+    ordered = sorted(values, reverse=True)
+    return {v: ordered.index(v) for v in set(ordered)}
+
+
 def _top(per_video, videos, kind) -> list[dict]:
+    """The TOP_N videos of a kind with the smallest sum of views rank and minutes rank (ties: minutes, views, id)."""
     rows = [(vid, m) for vid, m in per_video.items()
             if vid in videos and videos[vid].get("content_kind") == kind]
-    rows.sort(key=lambda x: -x[1]["minutes"])
+    by_minutes = _ranks([m["minutes"] for _, m in rows])
+    by_views = _ranks([m["views"] for _, m in rows])
+    rows.sort(key=lambda x: (by_minutes[x[1]["minutes"]] + by_views[x[1]["views"]], -x[1]["minutes"], -x[1]["views"], x[0]))
     return [{"video_id": vid, "title": videos[vid].get("title"), "thumb": videos[vid].get("thumbnail_url"),
              "published_at": videos[vid].get("published_at"), "hours": round(m["minutes"] / 60, 1),
              "views": m["views"]} for vid, m in rows[:TOP_N]]

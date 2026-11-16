@@ -30,7 +30,7 @@ function clock() {
 function fakeEl(kind = "lag", extra = {}) {
   const listeners = {};
   const el = {
-    dataset: kind === "lag" ? { tip: "lag", until: WINTER, ...extra }
+    dataset: kind === "top" ? { tip: "top", ...extra } : kind === "lag" ? { tip: "lag", until: WINTER, ...extra }
       : { tip: "h48", from: H48_FROM, until: WINTER, prevFrom: H48_PREV, pct: "+7.1%", ...extra }, tipHtml: null, tip: null, closeBtn: null,
     addEventListener(type, fn) { listeners[type] = fn; },
     fire(type) { if (listeners[type]) listeners[type](); },
@@ -260,4 +260,37 @@ test("render() binds both kinds on the cells it just drew, and a dismissal survi
   assert.ok(!cells[3].visible);
   cells[0].fire("mouseenter"); clk.tick(3000);
   assert.ok(cells[0].visible);  // the lag tooltip was not closed
+});
+
+
+test("the long-form and live top-3 titles say how they were picked and carry the tooltip hook", () => {
+  const { run } = sandbox();
+  const html = run("DATA = __d; renderChannel('soombi')", { __d: SAMPLE });
+  assert.equal(html.split('data-tip="top"').length - 1, 2);
+  for (const title of ["롱폼 상위 3", "라이브 상위 3"]) {
+    assert.ok(html.includes(`<h3 data-tip="top">${title}<span class="asof">28일 · 조회+시청시간</span></h3>`), title);
+  }
+});
+
+test("topTip: title and the three lines", () => {
+  const html = sandbox().run("topTip()");
+  assert.match(html, /^<div class="tip" role="tooltip">/);
+  assert.ok(html.includes("어떻게 골랐나요?"));
+  assert.equal(html.split("<li>").length - 1, 3);
+  for (const line of ["최근 28일 조회 순위와 시청시간 순위를 더해 작은 순으로 3편이에요.",
+    "같으면 시청시간이 많은 영상이 앞이에요.", "쇼츠는 빼요."]) assert.ok(html.includes(line), line);
+  assert.match(html, /<button type="button" class="tip-x" aria-label="닫기">×<\/button>/);
+});
+
+test("closing the top-3 tooltip closes it on the other title too, and leaves the other kinds alone", () => {
+  const { run, clk } = sandbox();
+  const a = fakeEl("top"), b = fakeEl("top"), lag = fakeEl("lag");
+  run("bindTip(a); bindTip(b); bindTip(lag)", { a, b, lag });
+  a.fire("mouseenter"); clk.tick(3000);
+  assert.ok(a.visible && a.tipHtml.includes("어떻게 골랐나요?"));
+  a.closeBtn.click();
+  b.fire("mouseenter"); clk.tick(10000);
+  assert.ok(!b.visible);
+  lag.fire("mouseenter"); clk.tick(3000);
+  assert.ok(lag.visible);
 });
