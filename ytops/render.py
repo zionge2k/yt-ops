@@ -523,8 +523,8 @@ def _reach_by_video(rows, end, days) -> dict[str, tuple]:
     return out
 
 
-def _reach_detail(rows, end, channel_key, videos, per_video, up, down) -> dict:
-    """Detail panel data: 28-day summary, shorts vs long ctr, and this week's uploads and the most shown videos.
+def _reach_detail(rows, end, videos, per_video, up, down) -> dict:
+    """Detail panel data: 28-day summary, shorts vs long ctr, and the most shown videos of the 28 days.
 
     Shorts and long-form (long, live archive, unknown, not in the catalog) are listed apart and each is judged
     against its own channel ctr and median impressions: shorts live on a different scale.
@@ -550,22 +550,13 @@ def _reach_detail(rows, end, channel_key, videos, per_video, up, down) -> dict:
                 "impressions": impressions, "ctr": _round(ctr, 5), "views": (per_video.get(vid) or {}).get("views"),
                 "verdict": verdict}
 
-    # uploads of the last 7 days up to the newest reach day (Seoul dates), newest first; kept even when YouTube
-    # has not reported them yet, so a fresh upload shows up with "—" instead of missing
-    week_start = end - timedelta(days=REACH_BOARD_DAYS - 1)
-    this_week = sorted(
-        ((v["published_at"], vid) for vid, v in videos.items()
-         if v.get("channel_key") == channel_key and week_start <= (_kst_date(v["published_at"]) or date.min) <= end),
-        reverse=True)
     most_shown = sorted(stats, key=lambda vid: (-stats[vid][0], vid))
 
     def kind_ctr(kind):
         return _round(_weighted_ctr(stats[vid] for vid in stats if (videos.get(vid) or {}).get("content_kind") == kind), 5)
 
     return {"days": REACH_WINDOW_DAYS, **_reach_summary(rows, end, REACH_WINDOW_DAYS, up, down),
-            "this_week": [row(vid) for _, vid in this_week if not is_short(vid)],
             "all": [row(vid) for vid in most_shown if not is_short(vid)][:REACH_TOP_N],
-            "this_week_shorts": [row(vid) for _, vid in this_week if is_short(vid)],
             "all_shorts": [row(vid) for vid in most_shown if is_short(vid)][:REACH_TOP_N],
             "shorts_ctr": kind_ctr("short"), "long_ctr": kind_ctr("long")}
 
@@ -660,7 +651,7 @@ def build(conn, *, today: date, config, now: datetime | None = None, quota: dict
             "subs_sources": _subs_sources(recent_daily),
             "genres": _genres(per_video, videos, playlists, [i for i in items if i["channel_key"] == k]),
             "reach": (stale_reach if reach_stale else
-                      {**_reach_detail(ch_reach, reach_end, k, videos, per_video, up, down),
+                      {**_reach_detail(ch_reach, reach_end, videos, per_video, up, down),
                        **_reach_summary(ch_reach_nos, reach_end, REACH_WINDOW_DAYS, up, down)} if reach_end else None),
         }
 

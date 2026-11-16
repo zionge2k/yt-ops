@@ -47,12 +47,12 @@ test("sample.json: one channel has detail.reach with the row shape the renderer 
   const r = withReach[0][1].reach;
   assert.equal(r.days, 28);
   for (const k of ["impressions", "ctr", "impressions_pct", "ctr_pp", "impressions_status", "ctr_status", "as_of", "window_days",
-    "this_week", "all", "this_week_shorts", "all_shorts", "shorts_ctr", "long_ctr"]) assert.ok(k in r, k);
-  assert.ok(r.this_week.length > 0 && r.all.length > 0 && r.all.length <= 12);
-  assert.ok(r.this_week_shorts.length > 0 && r.all_shorts.length > 0);
-  for (const row of [...r.this_week, ...r.all, ...r.this_week_shorts, ...r.all_shorts]) assert.deepEqual(Object.keys(row).sort(), [...ROW_KEYS].sort());
+    "all", "all_shorts", "shorts_ctr", "long_ctr"]) assert.ok(k in r, k);
+  assert.equal(Object.keys(r).length, 13);   // nothing besides the keys above
+  assert.ok(r.all.length > 0 && r.all.length <= 12 && r.all_shorts.length > 0);
+  for (const row of [...r.all, ...r.all_shorts]) assert.deepEqual(Object.keys(row).sort(), [...ROW_KEYS].sort());
   // shorts are listed apart: the long-form lists hold none, the shorts lists only shorts
-  assert.ok([...r.this_week, ...r.all].every((v) => v.kind !== "short") && [...r.this_week_shorts, ...r.all_shorts].every((v) => v.kind === "short"));
+  assert.ok(r.all.every((v) => v.kind !== "short") && r.all_shorts.every((v) => v.kind === "short"));
   assert.ok(["fix", "ok"].every((x) => r.all.some((v) => v.verdict === x)) && r.all_shorts.some((v) => v.verdict === "push"));
 });
 
@@ -135,13 +135,12 @@ test("channel detail: reach panels come right after 수익창출", () => {
   assert.ok(html.includes('<h3>썸네일 성적<span class="asof">28일 · 11/3까지</span></h3>'));
 });
 
-test("channel detail: summary stats, both tables and the note", () => {
-  const r = SAMPLE.detail.soombi.reach;
+test("channel detail: summary stats, the long-form table and the note", () => {
   const html = channel("soombi");
   assert.ok(html.includes("28일 노출 합계") && html.includes("채널 클릭률"));
-  assert.ok(html.includes(`<h4 class="sub">이번 주 올린 영상 · ${r.this_week.length}편</h4>`));
-  assert.ok(html.includes('<h4 class="sub">지난 28일 전체 · 노출 많은 순</h4>'));
-  assert.equal((html.match(/<table class="reach">/g) || []).length, 2);
+  assert.ok(html.includes('<h4 class="sub">지난 28일 롱폼 · 노출 많은 순</h4>'));
+  assert.ok(!html.includes("이번 주"));   // the "this week's uploads" lists are gone
+  assert.equal((html.match(/<table class="reach">/g) || []).length, 1);
   assert.ok(html.includes("<th>영상</th><th>올린 날</th><th class=\"n\">노출</th><th class=\"n\">클릭률</th><th class=\"n\">조회</th><th>한마디</th>"));
   assert.ok(html.includes('<p class="qwhen n">클릭률 = 썸네일을 본 사람 중 누른 비율'));
   assert.ok(!html.includes("NaN") && !html.includes("undefined"));
@@ -173,12 +172,12 @@ test("channel detail: titles are escaped, a missing title falls back to the vide
   assert.ok(html.includes('<td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td></td></tr>'));
 });
 
-test("channel detail: an empty week says so", () => {
+test("channel detail: an empty long-form list says so", () => {
   const data = clone();
-  data.detail.soombi.reach.this_week = [];
+  data.detail.soombi.reach.all = [];
   const html = channel("soombi", data);
-  assert.match(html, /<h4 class="sub">이번 주 올린 영상 · 0편<\/h4>\s*<p class="note-grey">이번 주 올린 영상 없음<\/p>/);
-  assert.equal((html.match(/<table class="reach">/g) || []).length, 1);   // only the 28-day table is left
+  assert.match(html, /<h4 class="sub">지난 28일 롱폼 · 노출 많은 순<\/h4>\s*<p class="note-grey">노출된 롱폼 없음<\/p>/);
+  assert.equal((html.match(/<table class="reach">/g) || []).length, 0);
 });
 
 test("channel detail: shorts vs long bars", () => {

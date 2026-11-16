@@ -813,7 +813,7 @@ def _reach_detail(monkeypatch, key="soombi"):
 def test_detail_reach_summary(monkeypatch):
     d = _reach_detail(monkeypatch)
     assert set(d) == {"days", "impressions", "ctr", "impressions_pct", "ctr_pp", "impressions_status", "ctr_status",
-                      "as_of", "window_days", "this_week", "all", "this_week_shorts", "all_shorts", "shorts_ctr",
+                      "as_of", "window_days", "all", "all_shorts", "shorts_ctr",
                       "long_ctr"}
     assert d["days"] == 28 and d["window_days"] == 28 and d["as_of"] == "2026-11-03"
     assert d["impressions"] == 46014 and d["ctr"] == pytest.approx(0.03929, abs=1e-5)
@@ -846,8 +846,7 @@ def test_detail_reach_shorts_are_listed_apart_with_their_own_rows(monkeypatch):
     d = _reach_detail(monkeypatch)
     assert [r["video_id"] for r in d["all_shorts"]] == ["V_SHORT"]
     assert d["all_shorts"][0]["kind"] == "short" and d["all_shorts"][0]["impressions"] == 3500
-    assert d["this_week_shorts"] == []
-    assert not any(r["kind"] == "short" for r in d["all"] + d["this_week"])
+    assert not any(r["kind"] == "short" for r in d["all"])
 
 
 def _split_rows(*specs):
@@ -868,16 +867,6 @@ def test_detail_reach_verdicts_use_separate_baselines_for_shorts_and_long_form(m
     assert shorts == {"S_A": "ok", "S_B": "ok", "S_C": "ok"}
 
 
-def test_detail_reach_this_week_splits_by_kind_even_before_a_video_is_reported(monkeypatch):
-    videos = [{"video_id": v, "channel_key": "soombi", "title": v, "thumbnail_url": None,
-               "published_at": datetime(2026, 11, 2, 3, tzinfo=UTC), "content_kind": k}
-              for v, k in (("NEW_L", "long"), ("NEW_S", "short"), ("NEW_LIVE", "live_archive"), ("NEW_U", "unknown"))]
-    rows = [_reach("soombi", "OLD", AS_OF - timedelta(days=i), 1000, "0.04") for i in range(10)]
-    d = _build(monkeypatch, yt_video=videos, yt_reach_daily=rows)["detail"]["soombi"]["reach"]
-    assert sorted(r["video_id"] for r in d["this_week"]) == ["NEW_L", "NEW_LIVE", "NEW_U"]
-    assert [r["video_id"] for r in d["this_week_shorts"]] == ["NEW_S"]
-
-
 def test_detail_reach_all_is_capped_at_twelve(monkeypatch):
     rows = [_reach("soombi", f"X{i:02d}", AS_OF, 100 + i, "0.05") for i in range(15)]
     got = _build(monkeypatch, yt_reach_daily=rows)["detail"]["soombi"]["reach"]["all"]
@@ -885,20 +874,9 @@ def test_detail_reach_all_is_capped_at_twelve(monkeypatch):
     assert got[0]["video_id"] == "X14" and got[-1]["video_id"] == "X03"
 
 
-def test_detail_reach_this_week_lists_videos_published_in_the_last_seven_days(monkeypatch):
-    rows = _reach_detail(monkeypatch)["this_week"]
-    # 10-28 .. 11-03 by Seoul date, newest first; a video without reach rows yet is still listed
-    assert [r["video_id"] for r in rows] == ["V_NEW", "V_QUIET"]
-    assert rows[0] == {"video_id": "V_NEW", "title": "t-V_NEW", "published_at": "2026-11-01", "kind": "long",
-                       "impressions": 1200, "ctr": 0.06, "views": None, "verdict": None}
-    assert rows[1]["published_at"] == "2026-10-31"           # 10-30 16:00 UTC is already 10-31 in Seoul
-    assert rows[1]["impressions"] is None and rows[1]["ctr"] is None and rows[1]["verdict"] is None
-
-
 def test_detail_reach_only_counts_the_channels_own_videos(monkeypatch):
     d = _reach_detail(monkeypatch, "a2p")
-    assert [r["video_id"] for r in d["all"]] == ["A_ONE"] and d["this_week"] == []
-    assert d["all_shorts"] == [] and d["this_week_shorts"] == []
+    assert [r["video_id"] for r in d["all"]] == ["A_ONE"] and d["all_shorts"] == []
     assert d["impressions"] == 1500 and d["impressions_pct"] is None
     assert d["shorts_ctr"] is None and d["long_ctr"] == 0.1
     assert d["all"][0]["verdict"] == "ok"  # one video is its own channel baseline: neither a fix nor a push
