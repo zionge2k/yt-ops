@@ -1,3 +1,4 @@
+import dataclasses
 import json
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -243,6 +244,10 @@ def test_board_subscribers_take_the_larger_of_exact_and_api(monkeypatch):
 
 
 def test_board_live_state(monkeypatch):
+    # every channel broadcasts since 2026-11-16: make one non-live here to keep that branch covered
+    channels = registry.load_channels()
+    channels["urachacha"] = dataclasses.replace(channels["urachacha"], is_live=False)
+    monkeypatch.setattr(registry, "load_channels", lambda: channels)
     d = _build(monkeypatch)["board"]
     # newest taken_at only; broadcast b3 (complete) excluded; viewers sum skips None
     assert d["soombi"]["live"] == {"on": True, "dual": True, "count": 2, "viewers": 3, "views": 150,

@@ -182,3 +182,9 @@
 - 실측(Mac): `discover --channel soombi` 7쪽(700단위)으로 4월 비공개 쇼츠 3편 찾음 → `collect --all --only video,video_daily,schedule` 8채널 오류 0(= 모두 totalResults 와 일치). 예약 롱폼/쇼츠: 숨비찰나 6/11 · 숨비카페 5/21 · BACK THEN 7/7 · JustSoombi 3/8 · groove.wav 6/6 · pli.wav 4/9 · MORROW 0/7 · A2P 0/2. 채널당 영상 목록 호출 ~87 → ~13.
 - 같이: 예약현황 날짜를 한국 날짜로(UTC 날짜를 잘라 09시 이전 예약이 전날로 보였음).
 - 전수 검수(형아 지시, 11/15 밤): 숨비찰나 외 7채널을 내 영상 검색으로 끝까지 훑음(30쪽, 3,000단위). 예약 영상은 7채널 모두 ID 단위로 현황판 DB 와 같음(BACK THEN 7/7 · MORROW 0/7 · A2P 0/1 · JustSoombi 3/8 · 숨비카페 5/21 · groove.wav 6/6 · pli.wav 4/9). DB 에서 지금 존재하는 영상 수 = 유튜브 총 개수(7채널 모두). 검색은 채널당 0~3편을 못 돌려줬음(검색도 완전하지 않음) — 검산용으로만 쓰고 수집 경로로 쓰지 않는 근거. DB 에만 있는 영상 중 3편(BACK THEN 1 · JustSoombi 2)은 유튜브에서 지워진 것.
+
+## 2026-11-16 — 라이브 8채널 반영 (형아 지시)
+
+- 사실: 11/16부터 라이브가 8채널(낮 pli.wav · 숨비카페 · 숨비찰나 · BACK THEN / 밤 groove.wav · JustSoombi · MORROW · A2P)인데 `config/channels.toml` 은 옛 3채널만 `is_live = true` 라 5채널 라이브 칸이 늘 「없음」, 2시간 라이브 수집도 그 5채널을 안 봄(`collect/live.py` 가 is_live 아니면 건너뜀). 11:00 부터 방송 중이던 pli.wav · 숨비카페가 현황판에 안 보였음.
+- Ruling: 8채널 모두 `is_live = true`. 현황판이 어느 채널을 지켜볼지만 정하는 설정이라 송출 · 방송방(방송꼬비 몫)과는 무관. `test_board_live_state` 는 실제 설정을 읽어 MORROW 를 비라이브 예로 쓰던 것을 테스트 안에서 비라이브로 지정하도록 바꿈.
+- 실측(Mac 11:5x): `collect --all --only live` 오류 0 · 낮 4채널 방송 중(BACK THEN 송출 상태 bad).
