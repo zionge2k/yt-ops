@@ -156,8 +156,9 @@ test("channel detail: verdict wording and colours, short tag only on short video
   assert.ok(html.includes('<td class="t-purple">클릭률 높은데 노출 적음 → 다시 밀어 볼 후보</td>'));
   assert.ok(html.includes('<td class="muted">괜찮아요</td>'));
   assert.ok(html.includes("<td></td></tr>"));   // no verdict: an empty cell
-  assert.ok(html.includes('<td>C <span class="tag t-grey">쇼츠</span></td>'));
-  assert.ok(html.includes("<td>A</td>") && html.includes("<td>D</td>"));
+  const link = (id) => `<a class="vlink" href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener">${id}</a>`;
+  assert.ok(html.includes(`<td>${link("C")} <span class="tag t-grey">쇼츠</span></td>`));
+  assert.ok(html.includes(`<td>${link("A")}</td>`) && html.includes(`<td>${link("D")}</td>`));
   assert.ok(html.includes('<td class="n">2.4<small>만</small></td>') || html.includes('<td class="n">2.4만</td>'));
   assert.ok(html.includes('<td class="n">2.6%</td>') && html.includes('<td class="n">1,234</td>') && html.includes('<td class="n">10/5</td>'));
 });
@@ -167,9 +168,18 @@ test("channel detail: titles are escaped, a missing title falls back to the vide
   data.detail.soombi.reach.all = [{ video_id: "vid123", title: null, published_at: null, kind: null, impressions: null, ctr: null, views: null, verdict: null },
     { video_id: "x", title: "<img src=x onerror=alert(1)>", published_at: "2026-10-05", kind: "long", impressions: 500, ctr: 0.1, views: 3, verdict: null }];
   const html = channel("soombi", data);
-  assert.ok(html.includes("<td>vid123</td>") && !html.includes("<img src=x"));
+  assert.ok(html.includes('href="https://www.youtube.com/watch?v=vid123" target="_blank" rel="noopener">vid123</a></td>') && !html.includes("<img src=x"));
   assert.ok(html.includes("&lt;img src=x onerror=alert(1)&gt;"));
   assert.ok(html.includes('<td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td></td></tr>'));
+});
+
+test("video titles link to the public watch page; the id is url-encoded", () => {
+  const data = clone();
+  data.detail.soombi.reach.all = [{ video_id: "a&b\"c", title: "T", published_at: null, kind: "long", impressions: 1, ctr: null, views: null, verdict: null }];
+  data.detail.soombi.top_long = [{ video_id: "L1", title: "Top", thumb: null, published_at: "2026-11-01", hours: 2, views: 3 }];
+  const html = channel("soombi", data);
+  assert.ok(html.includes('href="https://www.youtube.com/watch?v=a%26b%22c"'));
+  assert.ok(html.includes('<span class="vt"><a class="vlink" href="https://www.youtube.com/watch?v=L1" target="_blank" rel="noopener">Top</a></span>'));
 });
 
 test("channel detail: an empty long-form list says so", () => {

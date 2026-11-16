@@ -388,10 +388,13 @@ function audienceBlock(title, seg) {
     </div></section>`;
 }
 
+/** A video title linked to its public watch page, in a new tab (Studio links need the owner's login). */
+const watchLink = (v) => `<a class="vlink" href="https://www.youtube.com/watch?v=${encodeURIComponent(v.video_id)}" target="_blank" rel="noopener">${esc(v.title || v.video_id)}</a>`;
+
 function videoList(title, list) {
   const items = (list || []).slice(0, 3).map((v) => `<li class="vid">
       ${v.thumb ? `<img src="${esc(v.thumb)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'thumb'}))">` : `<span class="thumb"></span>`}
-      <div class="vi"><span class="vt">${esc(v.title || v.video_id)}</span>
+      <div class="vi"><span class="vt">${watchLink(v)}</span>
       <span class="vm n">${ymd(v.published_at)} · ${fmt(v.hours, 1)}시간 · 조회 ${fmt(v.views)}</span></div></li>`).join("");
   return `<section class="panel"><h3 data-tip="top">${title}<span class="asof">28일 · 조회+시청시간</span></h3>${items ? `<ul class="vids">${items}</ul>` : `<div class="nochart">—</div>`}</section>`;
 }
@@ -406,7 +409,7 @@ const REACH_WAITING = "보고서 쌓이는 중 · 유튜브가 하루 한 번 �
 function reachTable(rows) {
   const body = rows.map((v) => {
     const [cls, text] = VERDICT[v.verdict] || ["", ""];
-    return `<tr><td>${esc(v.title || v.video_id)}${v.kind === "short" ? ` <span class="tag t-grey">쇼츠</span>` : ""}</td><td class="n">${ymd(v.published_at)}</td><td class="n">${big(v.impressions)}</td><td class="n">${ctrText(v.ctr)}</td><td class="n">${fmt(v.views)}</td><td${cls ? ` class="${cls}"` : ""}>${text}</td></tr>`;
+    return `<tr><td>${watchLink(v)}${v.kind === "short" ? ` <span class="tag t-grey">쇼츠</span>` : ""}</td><td class="n">${ymd(v.published_at)}</td><td class="n">${big(v.impressions)}</td><td class="n">${ctrText(v.ctr)}</td><td class="n">${fmt(v.views)}</td><td${cls ? ` class="${cls}"` : ""}>${text}</td></tr>`;
   }).join("");
   return `<div class="reach-wrap"><table class="reach"><thead><tr><th>영상</th><th>올린 날</th><th class="n">노출</th><th class="n">클릭률</th><th class="n">조회</th><th>한마디</th></tr></thead><tbody>${body}</tbody></table></div>`;
 }
