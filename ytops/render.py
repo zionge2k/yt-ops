@@ -210,10 +210,16 @@ def _pct_of(value, goal):
     return None if value is None else min(round(value / goal * 100, 1), 100.0)
 
 
+def _api_ceiling(api: int) -> int:
+    """Largest true count the API can show as `api`: from 1,000 on it rounds down to 3 significant figures."""
+    return api + 10 ** (len(str(api)) - 3) - 1
+
+
 def _best_subscribers(snapshot) -> tuple[int | None, bool]:
-    """(count, approx). The reconstructed exact count lags Analytics by ~3 days and the API value is rounded
-    down from 1,000 on, so both undershoot the truth: the larger one is always the better estimate.
-    approx is True when the shown number is the rounded API value."""
+    """(count, approx). The API value is rounded down from 1,000 on, so the truth lies in [api, ceiling].
+    The reconstructed exact count lags Analytics by ~3 days and drifts upward (Analytics' gained/lost miss
+    the spam and closed accounts YouTube strips from the public count), so it is kept inside that range.
+    approx is True when the shown number is a bound of the API range rather than the reconstruction."""
     if snapshot is None:
         return None, False
     exact, api = snapshot.get("exact_subscribers"), snapshot.get("api_subscribers")
@@ -223,6 +229,8 @@ def _best_subscribers(snapshot) -> tuple[int | None, bool]:
         return api, api is not None and api >= 1000
     if api is not None and api > exact:
         return api, True
+    if api is not None and exact > _api_ceiling(api):
+        return _api_ceiling(api), True  # BACK THEN 11/17: 997 + Analytics net 84 = 1,081 while the API said 1,070
     return exact, False
 
 
@@ -642,7 +650,10 @@ def build(conn, *, today: date, config, now: datetime | None = None, quota: dict
             "health": health_of(monet),
             "monet": monet,
             "schedule": _schedule_summary([r for r in schedule_rows if r["channel_key"] == k], now),
-            "as_of": {"subs": (s.get("taken_on") if subs_n is not None and subs_n == s.get("api_subscribers") else ch_latest[k]) if s else ch_latest[k],
+            # a number read off today's API value (as is or as its ceiling) is as of the snapshot day
+            "as_of": {"subs": (s.get("taken_on") if subs_n is not None and (subs_n == s.get("api_subscribers")
+                                                                               or subs_n != s.get("exact_subscribers"))
+                               else ch_latest[k]) if s else ch_latest[k],
                       "hours": ch_latest[k], "h48": ch_latest[k],
                       "until": youtube_day_end(ch_latest[k])},
             "reach7": (stale_reach if reach_stale else

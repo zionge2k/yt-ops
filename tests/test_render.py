@@ -243,6 +243,29 @@ def test_board_subscribers_take_the_larger_of_exact_and_api(monkeypatch):
     assert b["monet"]["subs"] == 1020
 
 
+def test_board_subscribers_never_exceed_the_api_range(monkeypatch):
+    # BACK THEN 2026-11-17: baseline 997 + Analytics net 84 = 1,081, but the API said 1,070 (truth 1,070–1,079;
+    # Studio showed 1,078). The reconstruction drifted upward, so it is held to the API ceiling.
+    snap = [{"channel_key": "soombi", "taken_on": date(2026, 11, 17),
+             "api_subscribers": 1070, "exact_subscribers": 1081, "monetized": False}]
+    b = _build(monkeypatch, yt_subs_snapshot=snap)["board"]["soombi"]
+    assert b["subscribers"] == 1079 and b["subscribers_approx"] is True
+    assert b["as_of"]["subs"] == "2026-11-17"
+
+
+def test_board_subscribers_keep_the_exact_count_inside_the_api_range(monkeypatch):
+    snap = [{"channel_key": "soombi", "taken_on": date(2026, 11, 16),
+             "api_subscribers": 1060, "exact_subscribers": 1069, "monetized": False}]
+    b = _build(monkeypatch, yt_subs_snapshot=snap)["board"]["soombi"]
+    assert b["subscribers"] == 1069 and b["subscribers_approx"] is False
+
+
+def test_api_ceiling_follows_three_significant_figures():
+    assert render._api_ceiling(1070) == 1079
+    assert render._api_ceiling(12300) == 12399
+    assert render._api_ceiling(456000) == 456999
+
+
 def test_board_live_state(monkeypatch):
     # every channel broadcasts since 2026-11-16: make one non-live here to keep that branch covered
     channels = registry.load_channels()
