@@ -1,9 +1,10 @@
 // yt-ops dashboard v3: static page, renders data.json (from data.enc, or sample.json in dev).
-// Routes (hash): #board (default) · #subs · #watch · #api · #ch/<key>
+// Routes (hash): #board (default) · #subs · #watch · #api · #ch/<key> · #studio (not a tab)
 "use strict";
 
 const STORE_KEY = "ytops_pw";
 const WIN_KEY = "ytops_watch_win";
+const STUDIO_KEY = "ytops_studio_nums";
 const app = document.getElementById("app");
 let DATA = null;
 let sampleMode = false;
@@ -14,6 +15,9 @@ const POLL_MS = 30000, POLL_MAX_MS = 10 * 60 * 1000;
 // Button state lives here (not in the DOM) because render() rebuilds the header on every hash change.
 let rf = { text: REFRESH_LABEL, disabled: false };
 let rfTimer = null, rfPoll = null;
+const STUDIO_LABEL = "Studio 전부";
+let studioText = STUDIO_LABEL, studioTimer = null;  // same reason as rf: kept outside the DOM
+let studioNums = null;  // {"<account label>": 0..9}; loaded from storage on first use, then kept in memory
 
 // ---------- helpers ----------
 const isNull = (v) => v === null || v === undefined;
@@ -48,6 +52,77 @@ function store(op, key, value) {
     if (op === "del") localStorage.removeItem(key);
   } catch (e) { /* storage may be blocked; page still works */ }
   return null;
+}
+
+// ---------- Studio ----------
+// A page cannot tell which Google account number (authuser) this browser has. It guesses the sign-in order 0, 1, 2…
+// for the accounts in board order, so the button works at once; a wrong guess is corrected once per account on #studio.
+const boardChannels = () => DATA.order.map((k) => DATA.channels.find((c) => c.key === k)).filter(Boolean);
+const studioChannels = () => boardChannels().filter((c) => c.channel_id);
+const accountOf = (ch) => ch.account || ch.key;
+const guessNum = (acct) => Math.min([...new Set(boardChannels().map(accountOf))].indexOf(acct), 9);
+const validNum = (v) => Number.isInteger(v) && v >= 0 && v <= 9;
+const studioUrl = (ch, n) => `https://studio.youtube.com/channel/${encodeURIComponent(ch.channel_id)}?authuser=${n}`;
+
+function loadStudioNums() {
+  try {
+    const o = JSON.parse(store("get", STUDIO_KEY));
+    if (o && typeof o === "object" && !Array.isArray(o) && Object.values(o).every(validNum)) return o;
+  } catch (e) { /* broken JSON counts as no numbers */ }
+  return {};
+}
+
+function studioNum(ch) {
+  if (!studioNums) studioNums = loadStudioNums();
+  const a = accountOf(ch);
+  return Object.prototype.hasOwnProperty.call(studioNums, a) ? studioNums[a] : guessNum(a);
+}
+
+/** window.open must run inside the click; returns whether a tab opened (a blocked pop-up gives null). */
+function openStudio(ch, n) {
+  const w = window.open(studioUrl(ch, n), "_blank");
+  if (!w) return false;
+  try { w.opener = null; } catch (e) { /* cross-origin window */ }
+  return true;
+}
+
+function setStudioText(text) {
+  studioText = text;
+  const b = document.getElementById("studio-all");
+  if (b) b.textContent = text;
+  clearTimeout(studioTimer);
+  if (text !== STUDIO_LABEL) studioTimer = setTimeout(() => setStudioText(STUDIO_LABEL), 15000);
+}
+
+function openAllStudio() {
+  const list = studioChannels();
+  const opened = list.filter((ch) => openStudio(ch, studioNum(ch))).length;
+  // also on success: a retry that worked must clear the earlier "n/8" text
+  setStudioText(opened < list.length ? `${opened}/${list.length} 열림 · 주소창에서 팝업 허용` : STUDIO_LABEL);
+}
+
+function pickStudioNum(acct, n) {
+  if (!studioNums) studioNums = loadStudioNums();
+  studioNums[acct] = n;
+  store("set", STUDIO_KEY, JSON.stringify(studioNums));
+  const first = studioChannels().find((ch) => accountOf(ch) === acct);
+  if (first) openStudio(first, n);
+}
+
+function renderStudio() {
+  const back = `<a class="back" href="#board">‹ 현황판</a>`;
+  const title = `<h2 class="chname">Studio 계정 번호</h2>`;
+  const list = studioChannels();
+  if (!list.length) return `${back}${title}<div class="panel fail">—</div>`;
+  const groups = new Map();
+  list.forEach((ch) => { const a = accountOf(ch); groups.set(a, (groups.get(a) || []).concat(ch)); });
+  const rows = [...groups].map(([a, chs]) => {
+    const used = studioNum(chs[0]);
+    const names = chs.map((ch) => ch.display).join(" · ");
+    const nums = Array.from({ length: 10 }, (_, n) => `<button type="button" data-acct="${esc(a)}" data-n="${n}" aria-pressed="${n === used}">${n}</button>`).join("");
+    return `<div class="acct"><span class="an">${esc(names)}</span><div class="nums" role="group" aria-label="${esc(names)}">${nums}</div></div>`;
+  }).join("");
+  return `${back}${title}<p class="apinote">번호를 누르면 그 채널 Studio 가 새 탭으로 열려요. 대시보드가 보이면 맞는 번호예요.</p><section class="panel">${rows}</section>`;
 }
 
 // ---------- charts (inline SVG, no libraries) ----------
@@ -186,13 +261,18 @@ function renderApi() {
 function route() {
   const h = (location.hash || "#board").slice(1);
   if (h.startsWith("ch/")) return { view: "ch", key: h.slice(3) };
-  return { view: ["board", "subs", "watch", "api"].includes(h) ? h : "board" };
+  return { view: ["board", "subs", "watch", "api", "studio"].includes(h) ? h : "board" };
 }
 
 function refreshButton() {
   if (sampleMode) return `<button type="button" class="refresh" id="refresh" disabled title="시안 모드">${REFRESH_LABEL}</button>`;
   if (!REFRESH_URL) return "";
   return `<button type="button" class="refresh" id="refresh"${rf.disabled ? " disabled" : ""}>${esc(rf.text)}</button>`;
+}
+
+function studioButtons() {
+  if (!studioChannels().length) return "";
+  return `<span class="studio"><button type="button" class="refresh" id="studio-all">${esc(studioText)}</button><a class="refresh gear" href="#studio" aria-label="Studio 계정 번호" title="Studio 계정 번호">⚙\uFE0E</a></span>`;
 }
 
 /** The time most numbers were collected (daily run); falls back to the render time. */
@@ -233,7 +313,7 @@ function renderTop(view) {
   return `<header class="top">
     <h1>유튜브 상황판</h1>
     <nav class="tabs" aria-label="화면">${tabs}</nav>
-    <div class="meta n"><span>${mdhm(baseAt())} 수집 기준 · 분석 확정 ${DATA.latest_until ? untilKst(DATA.latest_until) : `${ymd(DATA.latest_day)}까지`}</span>${refreshButton()}</div>
+    <div class="meta n"><span>${mdhm(baseAt())} 수집 기준 · 분석 확정 ${DATA.latest_until ? untilKst(DATA.latest_until) : `${ymd(DATA.latest_day)}까지`}</span>${refreshButton()}${studioButtons()}</div>
   </header>`;
 }
 
@@ -496,6 +576,7 @@ function render({ keepScroll = false } = {}) {
   else if (r.view === "subs") body = renderSubs();
   else if (r.view === "watch") body = renderWatch();
   else if (r.view === "api") body = renderApi();
+  else if (r.view === "studio") body = renderStudio();
   else body = renderBoard();
   app.innerHTML = renderBands() + `<main>${renderTop(r.view)}${body}${renderErrors()}</main>`;
   app.querySelectorAll(".seg button").forEach((btn) => btn.addEventListener("click", () => {
@@ -512,9 +593,16 @@ function render({ keepScroll = false } = {}) {
     render({ keepScroll: true });
     window.scrollTo(0, y);
   }));
+  app.querySelectorAll("[data-acct]").forEach((btn) => btn.addEventListener("click", () => {
+    const y = window.scrollY;
+    pickStudioNum(btn.dataset.acct, Number(btn.dataset.n));
+    render({ keepScroll: true });
+    window.scrollTo(0, y);
+  }));
+  app.querySelectorAll("#studio-all").forEach((btn) => btn.addEventListener("click", openAllStudio));
   const rfBtn = document.getElementById("refresh");
   if (rfBtn && !sampleMode) rfBtn.addEventListener("click", startRefresh);
-  if (r.view === "ch" && !keepScroll) window.scrollTo(0, 0);
+  if ((r.view === "ch" || r.view === "studio") && !keepScroll) window.scrollTo(0, 0);
 }
 
 // ---------- refresh now ----------

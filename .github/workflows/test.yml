@@ -43,5 +43,7 @@ jobs:
 
       - run: node --test tests/test_site_shorts.mjs
 
+      - run: node --test tests/test_site_studio.mjs
+
       - run: node --test
         working-directory: refresh

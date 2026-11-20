@@ -37,6 +37,10 @@ img { max-width: 100%; }
 .tabs a[aria-current="page"] { background: var(--ink); color: #fff; }
 .refresh { font: inherit; font-size: 16px; font-weight: 700; min-height: 42px; padding: 0 16px; border: 1.5px solid var(--rule); border-radius: 10px; background: var(--sheet); color: var(--ink); cursor: pointer; white-space: nowrap; }
 .refresh:disabled { color: var(--ink-2); cursor: default; }
+/* open-all button + gear stay together when .meta wraps; in the one-row header a tab label never breaks to make room */
+@media (min-width: 1200px) { .tabs a { white-space: nowrap; } }
+.studio { display: inline-flex; gap: 8px; }
+.gear { display: inline-flex; align-items: center; justify-content: center; width: 42px; padding: 0; font-size: 22px; text-decoration: none; }
 .meta { margin: 0; color: var(--ink-2); font-size: 17px; white-space: nowrap; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px 12px; }
 .qtrack i { display: block; height: 4px; border-radius: 2px; background: var(--c); }
 .s-ok { --c: var(--blue); } .s-warn { --c: var(--purple); } .s-bad, .s-out, .s-red { --c: var(--red); } .s-blue { --c: var(--blue); } .s-purple { --c: var(--purple); } .s-grey { --c: var(--off); }
@@ -81,9 +85,17 @@ img { max-width: 100%; }
 .nochart { color: var(--ink-3); font-weight: 700; padding: 8px 0; }
 
 .segrow { display: flex; justify-content: flex-end; margin-bottom: 14px; }
-.seg { display: inline-flex; background: var(--sheet); border: 1.5px solid var(--rule); border-radius: 10px; padding: 3px; }
+.seg, .nums { display: inline-flex; background: var(--sheet); border: 1.5px solid var(--rule); border-radius: 10px; padding: 3px; }
 .seg button { border: 0; background: transparent; padding: 0 20px; min-height: 42px; border-radius: 7px; font-weight: 700; cursor: pointer; color: var(--ink-2); }
 .seg button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+/* #studio: ten number buttons per account, wrapping on a narrow phone */
+.nums { flex-wrap: wrap; gap: 2px; }
+.nums button { border: 0; background: transparent; min-width: 42px; min-height: 42px; border-radius: 7px; font-weight: 700; cursor: pointer; color: var(--ink-2); }
+.nums button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+.acct { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px 0; border-top: 1px solid var(--rule); }
+.acct:first-child { border-top: 0; padding-top: 0; }
+.acct:last-child { padding-bottom: 0; }
+.an { font-weight: 700; }
 
 /* ---------- channel detail ---------- */
 .back { display: inline-block; font-weight: 700; text-decoration: none; color: var(--ink-2); margin-bottom: 6px; }
@@ -159,6 +171,9 @@ img { max-width: 100%; }
   .grid { grid-template-columns: 1fr; }
   .top { grid-template-columns: 1fr; }
   .refresh { flex: 1 1 100%; }
+  .studio { flex: 1 1 100%; }
+  .studio button { flex: 1 1 0; }
+  .refresh.gear { flex: none; }
   .tabs a { padding: 0 14px; flex: 1; justify-content: center; }
   .tabs { display: flex; }
   .cols { grid-template-columns: 1fr; }

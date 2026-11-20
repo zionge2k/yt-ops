@@ -182,10 +182,21 @@ def test_v3_top_level_shape(monkeypatch):
     assert d["order"] == list(render.ORDER) == [
         "soombi", "backthen", "urachacha", "a2p", "justsoombi", "soombicafe", "groovewav", "pliwav"]
     assert [c["key"] for c in d["channels"]] == d["order"]
-    assert set(d["channels"][0]) == {"key", "display", "is_live", "collect_failed", "errors"}
+    assert set(d["channels"][0]) == {"key", "display", "is_live", "collect_failed", "errors",
+                                      "channel_id", "account"}
     for section in ("board", "subs_trend", "watch_trend", "detail"):
         assert list(d[section]) == d["order"], section
     assert d["errors"] == [{"channel": "pliwav", "stage": "x", "run_started_at": None, "human": "오류"}]
+
+
+def test_channels_carry_channel_id_and_account(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "channels.toml").write_text('[soombi]\nchannel_id = "UCfake1"\n', encoding="utf-8")
+    monkeypatch.setenv("YT_CHANNELS_HOME", str(home))
+    by = {c["key"]: c for c in _build(monkeypatch)["channels"]}
+    assert (by["soombi"]["channel_id"], by["soombi"]["account"]) == ("UCfake1", "가")
+    assert (by["pliwav"]["channel_id"], by["pliwav"]["account"]) == (None, "다")
 
 
 def test_youtube_day_end_is_the_pacific_midnight_in_utc():

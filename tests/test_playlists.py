@@ -4,7 +4,7 @@ from ytops.collect import playlists
 from ytops.collect.context import CollectContext
 from ytops.registry import Channel
 
-CH = Channel("soombi", "soombi", "UC1", True, 0, 0, "chalna")
+CH = Channel("soombi", "soombi", "UC1", None, True, 0, 0, "chalna")
 TODAY = date(2026, 11, 7)
 NOW = datetime(2026, 11, 7, 1, 0, tzinfo=timezone.utc)
 

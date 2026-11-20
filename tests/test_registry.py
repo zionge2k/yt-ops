@@ -34,6 +34,7 @@ def test_load_channels_reads_toml(tmp_path, monkeypatch):
     assert (s.display, s.is_live, s.plan_long_per_week, s.plan_shorts_per_day) == ("A", True, 2, 3)
     assert s.pc_name == "chalna"
     assert s.channel_id is None
+    assert s.account is None  # optional in the toml
     assert ch["pliwav"].pc_name == "pliwav"
 
 
@@ -55,6 +56,23 @@ def test_load_channels_merges_channel_id(tmp_path, monkeypatch):
     ch = load_channels(cfg)
     assert ch["soombi"].channel_id == "UCfake1"
     assert ch["pliwav"].channel_id is None
+
+
+def test_load_channels_reads_account(tmp_path, monkeypatch):
+    monkeypatch.setenv("YT_CHANNELS_HOME", str(tmp_path / "empty"))
+    cfg = tmp_path / "channels.toml"
+    cfg.write_text('[channels.soombi]\ndisplay = "A"\naccount = "가"\n[channels.pliwav]\ndisplay = "B"\n', encoding="utf-8")
+    ch = load_channels(cfg)
+    assert ch["soombi"].account == "가" and ch["pliwav"].account is None
+
+
+def test_repo_accounts_group_channels_by_google_account(monkeypatch, tmp_path):
+    monkeypatch.setenv("YT_CHANNELS_HOME", str(tmp_path / "empty"))
+    by = {}
+    for k, c in load_channels().items():
+        by.setdefault(c.account, set()).add(k)
+    assert by == {"가": {"soombi", "urachacha", "backthen", "a2p"}, "나": {"soombicafe", "justsoombi"},
+                  "다": {"pliwav", "groovewav"}}
 
 
 def test_load_projects(tmp_path):

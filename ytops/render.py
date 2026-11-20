@@ -628,7 +628,8 @@ def build(conn, *, today: date, config, now: datetime | None = None, quota: dict
         errors += ch_errors
         failed = any(_failed(e.get("stage")) for e in ch_errors)
         out_channels.append({"key": k, "display": ch.display, "is_live": ch.is_live,
-                             "collect_failed": failed, "errors": ch_errors})
+                             "collect_failed": failed, "errors": ch_errors,
+                             "channel_id": ch.channel_id, "account": ch.account})
         by_day = by_ch[k]
         s = subs.get(k)
         subs_n, subs_approx = _best_subscribers(s)

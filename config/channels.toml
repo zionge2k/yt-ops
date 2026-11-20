@@ -1,47 +1,56 @@
+# account: channels with the same label share one Google account; the page asks for one Studio account number per label.
 # Plan fields are filled in later by 숨비. channel_id lives outside the repo (see ytops.registry).
 [channels.soombi]
+account = "가"
 display = "숨비찰나"
 is_live = true
 plan_long_per_week = 0
 plan_shorts_per_day = 0
 
 [channels.urachacha]
+account = "가"
 display = "MORROW"
 is_live = true
 plan_long_per_week = 0
 plan_shorts_per_day = 0
 
 [channels.backthen]
+account = "가"
 display = "BACK THEN"
 is_live = true
 plan_long_per_week = 0
 plan_shorts_per_day = 0
 
 [channels.a2p]
+account = "가"
 display = "Adagio to Presto"
 is_live = true
 plan_long_per_week = 0
 plan_shorts_per_day = 0
 
 [channels.pliwav]
+account = "다"
 display = "pli.wav"
 is_live = true
 plan_long_per_week = 0
 plan_shorts_per_day = 0
 
 [channels.groovewav]
+account = "다"
 display = "groove.wav"
 is_live = true
 plan_long_per_week = 0
 plan_shorts_per_day = 0
 
 [channels.soombicafe]
+account = "나"
 display = "숨비카페"
 is_live = true
 plan_long_per_week = 0
 plan_shorts_per_day = 0
 
 [channels.justsoombi]
+account = "나"
 display = "JustSoombi"
 is_live = true
 plan_long_per_week = 0

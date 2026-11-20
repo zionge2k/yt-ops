@@ -6,7 +6,7 @@ from ytops.collect.context import CollectContext
 from ytops.registry import Channel
 from ytops.videos import content_kind, duration_seconds
 
-CH = Channel("soombi", "soombi", "UC1", False, 0, 0, "chalna")
+CH = Channel("soombi", "soombi", "UC1", None, False, 0, 0, "chalna")
 TODAY = date(2026, 11, 7)
 NOW = datetime(2026, 11, 7, 1, 0, tzinfo=timezone.utc)
 

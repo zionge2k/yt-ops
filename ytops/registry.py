@@ -22,6 +22,7 @@ class Channel:
     key: str
     display: str
     channel_id: str | None
+    account: str | None
     is_live: bool
     plan_long_per_week: int
     plan_shorts_per_day: int
@@ -63,6 +64,7 @@ def load_channels(config_path: Path | None = None) -> dict[str, Channel]:
             key=key,
             display=row["display"],
             channel_id=ids.get(key),
+            account=row.get("account"),
             is_live=bool(row.get("is_live", False)),
             plan_long_per_week=int(row.get("plan_long_per_week", 0)),
             plan_shorts_per_day=int(row.get("plan_shorts_per_day", 0)),

@@ -5,7 +5,7 @@ from ytops.collect import live
 from ytops.collect.context import CollectContext
 from ytops.registry import Channel
 
-CH = Channel("soombi", "soombi", "UC1", True, 0, 0, "chalna")
+CH = Channel("soombi", "soombi", "UC1", None, True, 0, 0, "chalna")
 TODAY = date(2026, 11, 7)
 NOW = datetime(2026, 11, 7, 1, 0, tzinfo=timezone.utc)
 
@@ -75,7 +75,7 @@ def test_live_concurrent_none_not_zero():
 
 
 def test_live_skips_api_when_not_live_channel():
-    off = Channel("urachacha", "urachacha", "UC2", False, 0, 0, "morrow")
+    off = Channel("urachacha", "urachacha", "UC2", None, False, 0, 0, "morrow")
     data = FakeData(http_error(500))
     c = CollectContext("urachacha", off, None, data, TODAY, NOW)
     assert live.collect(c, TODAY, TODAY) == {}

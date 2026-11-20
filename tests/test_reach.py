@@ -8,7 +8,7 @@ from ytops.collect import COLLECTORS, reach
 from ytops.collect.context import CollectContext
 from ytops.registry import Channel
 
-CH = Channel("soombi", "soombi", "UC1", True, 0, 0, "chalna")
+CH = Channel("soombi", "soombi", "UC1", None, True, 0, 0, "chalna")
 TODAY = date(2026, 11, 10)
 NOW = datetime(2026, 11, 10, 1, 0, tzinfo=timezone.utc)
 HEADER = "date,channel_id,video_id,video_thumbnail_impressions,video_thumbnail_impressions_ctr"
