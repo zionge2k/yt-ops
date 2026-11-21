@@ -19,7 +19,7 @@ const unesc = (s) => s.replace(/&(amp|lt|gt|quot|#39);/g, (_, e) => ({ amp: "&",
 // opts.open(i): what the i-th window.open call returns (default: a window object).
 function page({ hash = "#board", storage = new Map(), brokenStorage = false, open = () => ({}) } = {}) {
   const calls = { scrollTo: [], opens: [], timers: [], opened: [] };
-  let all = null;
+  let all = null, help = null;
   const picks = [];
   // attribute values are entity-decoded, as a browser does before filling dataset
   const attrs = (tag) => Object.fromEntries([...tag.matchAll(/([\w-]+)="([^"]*)"/g)].map((m) => [m[1], unesc(m[2])]));
@@ -27,12 +27,16 @@ function page({ hash = "#board", storage = new Map(), brokenStorage = false, ope
     set innerHTML(html) {
       this._html = html;
       picks.length = 0;
-      all = null;
+      all = help = null;
       for (const m of html.matchAll(/<button\b[^>]*>/g)) {
         const a = attrs(m[0]);
         if (a["data-acct"] !== undefined) {
           const listeners = {};
           picks.push({ dataset: { acct: a["data-acct"], n: a["data-n"] }, addEventListener(t, fn) { listeners[t] = fn; }, click() { listeners.click(); } });
+        }
+        if (a["data-toggle"] === "studio-help") {
+          const listeners = {};
+          help = { addEventListener(t, fn) { listeners[t] = fn; }, click() { listeners.click(); } };
         }
         if (a.id === "studio-all") {
           const listeners = {};
@@ -41,7 +45,7 @@ function page({ hash = "#board", storage = new Map(), brokenStorage = false, ope
       }
     },
     get innerHTML() { return this._html; },
-    querySelectorAll: (sel) => (sel === "[data-acct]" ? [...picks] : sel === "#studio-all" && all ? [all] : []),
+    querySelectorAll: (sel) => (sel === "[data-acct]" ? [...picks] : sel === "#studio-all" && all ? [all] : sel === '[data-toggle="studio-help"]' && help ? [help] : []),
   };
   const localStorage = brokenStorage
     ? { getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); }, removeItem() { throw new Error("blocked"); } }
@@ -77,6 +81,7 @@ function page({ hash = "#board", storage = new Map(), brokenStorage = false, ope
     html: () => app.innerHTML,
     pick: (acct, n) => picks.find((b) => b.dataset.acct === acct && b.dataset.n === String(n)).click(),
     allBtn: () => all,
+    helpBtn: () => help,
   };
 }
 
@@ -300,4 +305,33 @@ test("storage: with localStorage throwing, a number picked in this visit still w
   p.show();
   p.allBtn().click();
   assert.deepEqual(p.calls.opens.map((o) => o[0]), ORDER.map((key) => url(key, { 가: 2, 나: 0, 다: 5 }[ACCOUNT[key]])));
+});
+
+const HELP_TITLES = ["번호가 뭔가요?", "「권한 없음」이 뜨면", "번호가 바뀌는 때", "탭이 하나만 열리면"];
+
+test("settings: the explanation is hidden behind a button and opens below it", () => {
+  const p = page({ hash: "#studio" });
+  const closed = p.show();
+  assert.match(closed, /<button type="button" class="tog" data-toggle="studio-help" aria-expanded="false">설명 보기<\/button>/);
+  assert.ok(HELP_TITLES.every((t) => !closed.includes(t)));
+  p.calls.scrollTo.length = 0;
+  p.helpBtn().click();
+  const open = p.html();
+  assert.match(open, /data-toggle="studio-help" aria-expanded="true">설명 닫기<\/button>/);
+  const at = HELP_TITLES.map((t) => open.indexOf(`<h4>${t}</h4>`));
+  assert.ok(at[0] > open.indexOf('data-toggle="studio-help"') && at.every((x, i) => x > 0 && (i === 0 || x > at[i - 1])));
+  assert.equal((open.match(/data-acct="/g) || []).length, 3 * 10);   // the number rows stay
+  assert.deepEqual(p.calls.scrollTo, [[0, 120]]);   // opening it does not jump to the top
+  p.helpBtn().click();
+  assert.ok(HELP_TITLES.every((t) => !p.html().includes(t)));
+});
+
+test("settings: the explanation stays open while numbers are picked, a reloaded page starts closed, old data has no button", () => {
+  const p = page({ hash: "#studio" });
+  p.show();
+  p.helpBtn().click();
+  p.pick("나", 4);
+  assert.ok(p.html().includes(`<h4>${HELP_TITLES[0]}</h4>`));
+  assert.ok(!page({ hash: "#studio" }).show().includes(HELP_TITLES[0]));
+  assert.ok(!page({ hash: "#studio" }).show(oldData()).includes("studio-help"));
 });

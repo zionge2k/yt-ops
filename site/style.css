@@ -96,6 +96,9 @@ img { max-width: 100%; }
 .acct:first-child { border-top: 0; padding-top: 0; }
 .acct:last-child { padding-bottom: 0; }
 .an { font-weight: 700; }
+.help { margin-top: 12px; }
+.help ul { margin: 0 0 14px; padding-left: 20px; }
+.help ul:last-child { margin-bottom: 0; }
 
 /* ---------- channel detail ---------- */
 .back { display: inline-block; font-weight: 700; text-decoration: none; color: var(--ink-2); margin-bottom: 6px; }

@@ -109,6 +109,32 @@ function pickStudioNum(acct, n) {
   if (first) openStudio(first, n);
 }
 
+let showStudioHelp = false;  // memory only, like showShorts
+// [title, lines] shown under the 설명 button on #studio
+const STUDIO_HELP = [
+  ["번호가 뭔가요?", [
+    "이 브라우저에 구글 계정을 로그인한 순서예요. 맨 처음 로그인한 계정이 0번, 그다음이 1번이에요.",
+    "「Studio 전부」는 채널마다 그 번호의 계정으로 Studio 를 열어요.",
+    "한 줄에 있는 채널은 같은 구글 계정이라 번호가 같아요.",
+    "번호는 이 브라우저에만 저장돼요. 다른 컴퓨터나 다른 브라우저는 번호가 달라요."]],
+  ["「권한 없음」이 뜨면", [
+    "그 채널이 있는 줄에서 번호를 0부터 차례로 눌러 보세요.",
+    "대시보드가 뜨는 번호에서 멈추면 저장돼요.",
+    "열 개가 다 안 되면 그 구글 계정이 로그인돼 있지 않은 거예요. 로그인한 뒤 다시 눌러 보세요."]],
+  ["번호가 바뀌는 때", [
+    "구글에서 로그아웃했다가 다시 로그인하면 순서가 달라질 수 있어요.",
+    "쿠키와 사이트 데이터를 지우면 저장한 번호도 지워져요.",
+    "그럴 땐 여기서 다시 맞추면 돼요."]],
+  ["탭이 하나만 열리면", [
+    "주소창의 팝업 차단 표시를 눌러 이 사이트의 팝업을 「항상 허용」으로 바꾸세요. 한 번만 하면 돼요."]],
+];
+
+function studioHelp() {
+  const toggle = `<button type="button" class="tog" data-toggle="studio-help" aria-expanded="${showStudioHelp}">${showStudioHelp ? "설명 닫기" : "설명 보기"}</button>`;
+  if (!showStudioHelp) return toggle;
+  return `${toggle}<section class="panel help">${STUDIO_HELP.map(([t, lines]) => `<h4>${t}</h4><ul>${lines.map((l) => `<li>${l}</li>`).join("")}</ul>`).join("")}</section>`;
+}
+
 function renderStudio() {
   const back = `<a class="back" href="#board">‹ 현황판</a>`;
   const title = `<h2 class="chname">Studio 계정 번호</h2>`;
@@ -122,7 +148,7 @@ function renderStudio() {
     const nums = Array.from({ length: 10 }, (_, n) => `<button type="button" data-acct="${esc(a)}" data-n="${n}" aria-pressed="${n === used}">${n}</button>`).join("");
     return `<div class="acct"><span class="an">${esc(names)}</span><div class="nums" role="group" aria-label="${esc(names)}">${nums}</div></div>`;
   }).join("");
-  return `${back}${title}<p class="apinote">번호를 누르면 그 채널 Studio 가 새 탭으로 열려요. 대시보드가 보이면 맞는 번호예요.</p><section class="panel">${rows}</section>`;
+  return `${back}${title}<p class="apinote">번호를 누르면 그 채널 Studio 가 새 탭으로 열려요. 대시보드가 보이면 맞는 번호예요.</p><section class="panel">${rows}</section>${studioHelp()}`;
 }
 
 // ---------- charts (inline SVG, no libraries) ----------
@@ -590,6 +616,12 @@ function render({ keepScroll = false } = {}) {
   app.querySelectorAll('[data-toggle="shorts"]').forEach((btn) => btn.addEventListener("click", () => {
     const y = window.scrollY;
     showShorts = !showShorts;
+    render({ keepScroll: true });
+    window.scrollTo(0, y);
+  }));
+  app.querySelectorAll('[data-toggle="studio-help"]').forEach((btn) => btn.addEventListener("click", () => {
+    const y = window.scrollY;
+    showStudioHelp = !showStudioHelp;
     render({ keepScroll: true });
     window.scrollTo(0, y);
   }));

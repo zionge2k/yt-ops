@@ -32,7 +32,7 @@ Status: active
 - [x] 새로고침을 전체 수집으로 · 30분 간격 (11/09) · 구독자는 계산값·API 값 중 큰 쪽 (11/09)
 - [ ] **V2-a 노출수·CTR**: Reporting API 켬 + 8채널 reach job 생성(11/09 11:20). **코드 완료(11/09)**: `yt_reach_daily` 표 · `ytops/reporting.py` · reach 수집기 · render `reach7`/`reach` · 카드 두 줄 + 심화 「썸네일 성적」(커밋 5개, 테스트 가짜만). 첫 보고서 파일 대기(11/10 오후 확인): `python -m ytops schema --apply` 로 표 만든 뒤 `collect --channel soombi --only reach` 한 번 돌려 실제 열 이름 · 값 범위(ratio) 확인. 그때까지 화면은 「보고서 쌓이는 중」.
 - [x] reach 429 고침(11/15): 11/10~15 daily · 새로고침이 reach 429 로 매일 빨간불(핵심 숫자는 정상). 원인 = Reporting API 분당 60건 한도에 매번 채널당 33~34개 파일 재다운로드. 마지막 성공 시각 뒤에 생긴 보고서만 읽기 + 429 는 20 · 40초 기다려 재시도. Mac 실측 8채널 오류 0 · 34초. 리뷰(opus) 뒤 보강: 책갈피를 `yt_run_log` 의 reach 무오류 실행 시각으로 · `collect --reach-reread-days N` · 주소 없는 보고서는 오류. 자세한 것은 `rulings.md` 11/15 절
-- [x] **Studio 전부 버튼** (11/21): 위쪽 줄 버튼 하나로 8채널 Studio 를 새 탭으로. 주소 = 채널 ID + `authuser=계정 번호`, 번호는 브라우저별 localStorage(없으면 0 · 1 · 2 추측), 틀리면 톱니(`#studio`)에서 고침. 채널 항목에 `channel_id` · `account` 추가. 남은 것: 실제 Chrome 에서 팝업 허용 뒤 8개 열리는지 · 숨비 PC 번호 맞추기. 같은 일을 브라우저 밖에서 하는 것은 허브 `studio-tabs` 스킬
+- [x] **Studio 전부 버튼** (11/21): 위쪽 줄 버튼 하나로 8채널 Studio 를 새 탭으로. 주소 = 채널 ID + `authuser=계정 번호`, 번호는 브라우저별 localStorage(없으면 0 · 1 · 2 추측), 틀리면 톱니(`#studio`)에서 고침. 채널 항목에 `channel_id` · `account` 추가. 형아 브라우저와 숨비 PC 에서 번호를 맞춘 뒤 8채널 열림 확인(11/21, 숨비 PC 둘째 묶음은 4번). 번호 화면에 「설명 보기」 버튼. 같은 일을 브라우저 밖에서 하는 것은 허브 `studio-tabs` 스킬
 - [ ] 남은 것: `config/channels.toml` 채널별 업로드 계획 숫자 채우기(지금은 전부 '계획 없음') · 숨비 폰으로 열어 보기 · 채널 전체 상태 규칙 확정 · 아주 작은 기준값의 퍼센트(+70,900% 류) 표시 규칙 · 11/08 09:30 첫 자동 실행 확인
 
 ## Resume Point
